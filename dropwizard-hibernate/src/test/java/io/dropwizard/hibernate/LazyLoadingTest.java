@@ -19,8 +19,8 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.exception.ConstraintViolationException;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
@@ -72,7 +72,7 @@ public class LazyLoadingTest {
             initDatabase(sessionFactory);
 
             environment.jersey().register(new UnitOfWorkApplicationListener("hr-db", sessionFactory));
-            environment.jersey().register(new DogResource(new DogDAO(sessionFactory)));
+            environment.jersey().register(new DogResource(new DogDAO()));
             environment.jersey().register(new PersistenceExceptionMapper());
             environment.jersey().register(new ConstraintViolationExceptionMapper());
         }
@@ -106,10 +106,6 @@ public class LazyLoadingTest {
     }
 
     public static class DogDAO extends AbstractDAO<Dog> {
-        DogDAO(SessionFactory sessionFactory) {
-            super(sessionFactory);
-        }
-
         Optional<Dog> findByName(String name) {
             return Optional.ofNullable(get(name));
         }
@@ -152,16 +148,16 @@ public class LazyLoadingTest {
         }
     }
 
-    private DropwizardTestSupport dropwizardTestSupport = mock(DropwizardTestSupport.class);
+    private DropwizardTestSupport<?> dropwizardTestSupport = mock(DropwizardTestSupport.class);
     private Client client = new JerseyClientBuilder().build();
 
-    public void setup(Class<? extends Application<TestConfiguration>> applicationClass) {
+    public void setup(Class<? extends Application<TestConfiguration>> applicationClass) throws Exception {
         dropwizardTestSupport = new DropwizardTestSupport<>(applicationClass, ResourceHelpers.resourceFilePath("hibernate-integration-test.yaml"),
             ConfigOverride.config("dataSource.url", "jdbc:hsqldb:mem:DbTest" + System.nanoTime() + "?hsqldb.translate_dti_types=false"));
         dropwizardTestSupport.before();
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         dropwizardTestSupport.after();
         client.close();

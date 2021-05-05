@@ -26,19 +26,22 @@ import java.util.stream.Collectors;
 public class SelfValidatingValidator implements ConstraintValidator<SelfValidating, Object> {
     private static final Logger log = LoggerFactory.getLogger(SelfValidatingValidator.class);
 
+    @SuppressWarnings("rawtypes")
     private final ConcurrentMap<Class<?>, List<ValidationCaller>> methodMap = new ConcurrentHashMap<>();
     private final AnnotationConfiguration annotationConfiguration = new AnnotationConfiguration.StdConfiguration(AnnotationInclusion.INCLUDE_AND_INHERIT_IF_INHERITED);
     private final TypeResolver typeResolver = new TypeResolver();
     private final MemberResolver memberResolver = new MemberResolver(typeResolver);
+    private boolean escapeExpressions = true;
 
     @Override
     public void initialize(SelfValidating constraintAnnotation) {
+        escapeExpressions = constraintAnnotation.escapeExpressions();
     }
 
-    @SuppressWarnings({"unchecked"})
+    @SuppressWarnings({"unchecked", "rawtypes"})
     @Override
     public boolean isValid(Object value, ConstraintValidatorContext context) {
-        final ViolationCollector collector = new ViolationCollector(context);
+        final ViolationCollector collector = new ViolationCollector(context, escapeExpressions);
         context.disableDefaultConstraintViolation();
         for (ValidationCaller caller : methodMap.computeIfAbsent(value.getClass(), this::findMethods)) {
             caller.setValidationObject(value);
@@ -51,13 +54,13 @@ public class SelfValidatingValidator implements ConstraintValidator<SelfValidati
      * This method generates <code>ValidationCaller</code>s for each method annotated
      * with <code>@SelfValidation</code> that adheres to required signature.
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "rawtypes" })
     private <T> List<ValidationCaller> findMethods(Class<T> annotated) {
         ResolvedTypeWithMembers annotatedType = memberResolver.resolve(typeResolver.resolve(annotated), annotationConfiguration, null);
         final List<ValidationCaller> callers = Arrays.stream(annotatedType.getMemberMethods())
             .filter(this::isValidationMethod)
             .filter(this::isMethodCorrect)
-            .map(m -> new ProxyValidationCaller(annotated, m))
+            .map(m -> new ProxyValidationCaller<>(annotated, m))
             .collect(Collectors.toList());
         if (callers.isEmpty()) {
             log.warn("The class {} is annotated with @SelfValidating but contains no valid methods that are annotated " +
@@ -85,7 +88,7 @@ public class SelfValidatingValidator implements ConstraintValidator<SelfValidati
         return true;
     }
 
-    final class ProxyValidationCaller<T> extends ValidationCaller<T> {
+    final static class ProxyValidationCaller<T> extends ValidationCaller<T> {
         private final Class<T> cls;
         private final ResolvedMethod resolvedMethod;
 

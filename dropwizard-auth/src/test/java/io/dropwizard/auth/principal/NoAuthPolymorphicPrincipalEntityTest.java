@@ -6,13 +6,15 @@ import io.dropwizard.auth.PolymorphicAuthValueFactoryProvider;
 import io.dropwizard.logging.BootstrapLogging;
 import io.dropwizard.util.Maps;
 import io.dropwizard.util.Sets;
-import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
 import org.glassfish.jersey.servlet.ServletProperties;
 import org.glassfish.jersey.test.DeploymentContext;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.ServletDeploymentContext;
 import org.glassfish.jersey.test.TestProperties;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.container.ContainerRequestFilter;
@@ -31,6 +33,19 @@ public class NoAuthPolymorphicPrincipalEntityTest extends JerseyTest {
     static {
         BootstrapLogging.bootstrap();
     }
+
+    @Override
+    @BeforeEach
+    public void setUp() throws Exception {
+        super.setUp();
+    }
+
+    @Override
+    @AfterEach
+    public void tearDown() throws Exception {
+        super.tearDown();
+    }
+
 
     @Override
     protected DeploymentContext configureDeployment() {
@@ -66,7 +81,7 @@ public class NoAuthPolymorphicPrincipalEntityTest extends JerseyTest {
         }
 
         @Override protected DynamicFeature getAuthDynamicFeature(ContainerRequestFilter authFilter) {
-            return new PolymorphicAuthDynamicFeature(Maps.of(
+            return new PolymorphicAuthDynamicFeature<>(Maps.of(
                 JsonPrincipal.class, getAuthFilter(),
                 NullPrincipal.class, getAuthFilter()
             ));

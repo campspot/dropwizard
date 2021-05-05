@@ -4,6 +4,8 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.context.internal.ManagedSessionContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.util.Map;
@@ -35,30 +37,24 @@ import static java.util.Objects.requireNonNull;
  * </pre>
  */
 public class UnitOfWorkAspect {
-
+    private static final Logger logger = LoggerFactory.getLogger(UnitOfWorkAspect.class);
     private final Map<String, SessionFactory> sessionFactories;
 
     public UnitOfWorkAspect(Map<String, SessionFactory> sessionFactories) {
         this.sessionFactories = sessionFactories;
     }
 
-    // Context variables
-    @Nullable
-    private UnitOfWork unitOfWork;
-
-    @Nullable
-    private Session session;
-
-    @Nullable
-    private SessionFactory sessionFactory;
+    // was the session created by this aspect?
+    private boolean sessionCreated;
+    // do we manage the transaction or did we join an existing one?
+    private boolean transactionStarted;
 
     public void beforeStart(@Nullable UnitOfWork unitOfWork) {
         if (unitOfWork == null) {
             return;
         }
-        this.unitOfWork = unitOfWork;
 
-        sessionFactory = sessionFactories.get(unitOfWork.value());
+        SessionFactory sessionFactory = sessionFactories.get(unitOfWork.value());
         if (sessionFactory == null) {
             // If the user didn't specify the name of a session factory,
             // and we have only one registered, we can assume that it's the right one.
@@ -68,28 +64,45 @@ public class UnitOfWorkAspect {
                 throw new IllegalArgumentException("Unregistered Hibernate bundle: '" + unitOfWork.value() + "'");
             }
         }
-        session = sessionFactory.openSession();
-        try {
-            configureSession();
-            ManagedSessionContext.bind(session);
-            beginTransaction(unitOfWork, session);
-        } catch (Throwable th) {
-            session.close();
-            session = null;
-            ManagedSessionContext.unbind(sessionFactory);
-            throw th;
+
+        Session existingSession = null;
+
+        if (ManagedSessionContext.hasBind(sessionFactory)) {
+            existingSession = sessionFactory.getCurrentSession();
+        }
+
+        if (existingSession != null && existingSession.isOpen() && existingSession.getSessionFactory() != null && UnitOfWorkContext.getSessionFactory() != null) {
+            logger.info("Reusing existing session");
+            sessionCreated = false;
+        } else {
+            Session session = null;
+            try {
+                session = sessionFactory.openSession();
+                sessionCreated = true;
+                setContext(unitOfWork, session);
+                configureSession();
+                beginTransaction(unitOfWork, session)   ;
+            } catch (Throwable th) {
+                if (session != null) {
+                    session.close();
+                }
+                clearContext();
+                throw th;
+            }
         }
     }
 
     public void afterEnd() {
-        if (unitOfWork == null || session == null) {
+        UnitOfWork unitOfWork = UnitOfWorkContext.getUnitOfWork();
+        SessionFactory sessionFactory = UnitOfWorkContext.getSessionFactory();
+        if (unitOfWork == null || sessionFactory == null) {
             return;
         }
 
         try {
-            commitTransaction(unitOfWork, session);
+            commitTransaction(unitOfWork, sessionFactory.getCurrentSession());
         } catch (Exception e) {
-            rollbackTransaction(unitOfWork, session);
+            rollbackTransaction(unitOfWork, sessionFactory.getCurrentSession());
             throw e;
         }
         // We should not close the session to let the lazy loading work during serializing a response to the client.
@@ -97,12 +110,14 @@ public class UnitOfWorkAspect {
     }
 
     public void onError() {
-        if (unitOfWork == null || session == null) {
+        UnitOfWork unitOfWork = UnitOfWorkContext.getUnitOfWork();
+        SessionFactory sessionFactory = UnitOfWorkContext.getSessionFactory();
+        if (unitOfWork == null || sessionFactory == null) {
             return;
         }
 
         try {
-            rollbackTransaction(unitOfWork, session);
+            rollbackTransaction(unitOfWork, sessionFactory.getCurrentSession());
         } finally {
             onFinish();
         }
@@ -110,19 +125,20 @@ public class UnitOfWorkAspect {
 
     public void onFinish() {
         try {
-            if (session != null) {
-                session.close();
+            SessionFactory sessionFactory = UnitOfWorkContext.getSessionFactory();
+            if (sessionCreated && sessionFactory != null) {
+                sessionFactory.getCurrentSession().close();
             }
         } finally {
-            session = null;
-            ManagedSessionContext.unbind(sessionFactory);
+            if (sessionCreated) {
+                clearContext();
+            }
         }
     }
 
     protected void configureSession() {
-        if (unitOfWork == null || session == null) {
-            throw new NullPointerException("unitOfWork or session is null. This is a bug!");
-        }
+        Session session = UnitOfWorkContext.getCurrentSession();
+        UnitOfWork unitOfWork = requireNonNull(UnitOfWorkContext.getUnitOfWork());
         session.setDefaultReadOnly(unitOfWork.readOnly());
         session.setCacheMode(unitOfWork.cacheMode());
         session.setHibernateFlushMode(unitOfWork.flushMode());
@@ -132,7 +148,13 @@ public class UnitOfWorkAspect {
         if (!unitOfWork.transactional()) {
             return;
         }
-        session.beginTransaction();
+        final Transaction txn = session.getTransaction();
+        if (txn != null && txn.isActive()) {
+            transactionStarted = false;
+        } else {
+            session.beginTransaction();
+            transactionStarted = true;
+        }
     }
 
     private void rollbackTransaction(UnitOfWork unitOfWork, Session session) {
@@ -140,7 +162,7 @@ public class UnitOfWorkAspect {
             return;
         }
         final Transaction txn = session.getTransaction();
-        if (txn != null && txn.getStatus().canRollback()) {
+        if (transactionStarted && txn != null && txn.getStatus().canRollback()) {
             txn.rollback();
         }
     }
@@ -150,17 +172,25 @@ public class UnitOfWorkAspect {
             return;
         }
         final Transaction txn = session.getTransaction();
-        if (txn != null && txn.getStatus().canRollback()) {
+        if (transactionStarted && txn != null && txn.getStatus().canRollback()) {
             txn.commit();
         }
     }
 
-    protected Session getSession() {
-        return requireNonNull(session);
+    private static void setContext(UnitOfWork unitOfWork, Session session) {
+        clearContext();
+        ManagedSessionContext.bind(session);
+        UnitOfWorkContext.setUnitOfWork(unitOfWork);
+        SessionFactory sessionFactory = session.getSessionFactory();
+        if (sessionFactory == null) {
+            clearContext();
+            throw new IllegalStateException("No session factory on session");
+        }
+        UnitOfWorkContext.setSessionFactory(sessionFactory);
     }
 
-    protected SessionFactory getSessionFactory() {
-        return requireNonNull(sessionFactory);
+    private static void clearContext() {
+        ManagedSessionContext.unbind(UnitOfWorkContext.getSessionFactory());
+        UnitOfWorkContext.clear();
     }
-
 }

@@ -1,6 +1,5 @@
 package io.dropwizard.logging;
 
-import ch.qos.logback.classic.AsyncAppender;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
@@ -20,6 +19,7 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.dropwizard.jackson.Jackson;
+import io.dropwizard.logback.AsyncAppenderBaseProxy;
 import io.dropwizard.logging.async.AsyncAppenderFactory;
 import io.dropwizard.logging.async.AsyncLoggingEventAppenderFactory;
 import io.dropwizard.logging.filter.LevelFilterFactory;
@@ -70,11 +70,17 @@ public class DefaultLoggingFactory implements LoggingFactory {
     @JsonIgnore
     private final PrintStream configurationErrorsStream;
 
+    @JsonIgnore
+    @Nullable
+    private volatile String loggerName;
+
     public DefaultLoggingFactory() {
         this(LoggingUtil.getLoggerContext(), System.err);
     }
 
     DefaultLoggingFactory(LoggerContext loggerContext, PrintStream configurationErrorsStream) {
+        super();
+        this.loggerName = null;
         this.loggerContext = requireNonNull(loggerContext);
         this.configurationErrorsStream = requireNonNull(configurationErrorsStream);
     }
@@ -85,6 +91,31 @@ public class DefaultLoggingFactory implements LoggingFactory {
 
     PrintStream getConfigurationErrorsStream() {
         return configurationErrorsStream;
+    }
+
+    /**
+     * This method is designed to be used by unit tests only.
+     */
+    void clear() {
+
+        // This is volatile, read once for performance.
+        final String name = loggerName;
+        if (name != null) {
+            CHANGE_LOGGER_CONTEXT_LOCK.lock();
+            try {
+                loggerContext.stop();
+
+                final Logger logger = loggerContext.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+                logger.detachAndStopAllAppenders();
+
+                // Additional cleanup/reset for this name
+                configureLoggers(name);
+            } finally {
+                CHANGE_LOGGER_CONTEXT_LOCK.unlock();
+            }
+
+            StatusPrinter.setPrintStream(System.out);
+        }
     }
 
     @JsonProperty
@@ -128,6 +159,8 @@ public class DefaultLoggingFactory implements LoggingFactory {
         } finally {
             CHANGE_LOGGER_CONTEXT_LOCK.unlock();
         }
+
+        loggerName = name;
 
         final LevelFilterFactory<ILoggingEvent> levelFilterFactory = new ThresholdLevelFilterFactory();
         final AsyncAppenderFactory<ILoggingEvent> asyncAppenderFactory = new AsyncLoggingEventAppenderFactory();
@@ -177,9 +210,9 @@ public class DefaultLoggingFactory implements LoggingFactory {
             final List<Appender<ILoggingEvent>> appenders = Lists.of(logger.iteratorForAppenders());
             for (Appender<ILoggingEvent> appender : appenders) {
                 if (appender instanceof AsyncAppenderBase) {
-                    flushAppender((AsyncAppenderBase) appender);
+                    flushAppender((AsyncAppenderBase<?>) appender);
                 } else if (appender instanceof AsyncAppenderBaseProxy) {
-                    flushAppender(((AsyncAppenderBaseProxy) appender).getAppender());
+                    flushAppender(((AsyncAppenderBaseProxy<?>) appender).getAppender());
                 }
             }
         } catch (InterruptedException ignored) {
@@ -217,7 +250,7 @@ public class DefaultLoggingFactory implements LoggingFactory {
         }
     }
 
-    private void flushAppender(AsyncAppenderBase appender) throws InterruptedException {
+    private void flushAppender(AsyncAppenderBase<?> appender) throws InterruptedException {
         int timeWaiting = 0;
         while (timeWaiting < appender.getMaxFlushTime() && appender.getNumberOfElementsInQueue() > 0) {
             Thread.sleep(100);
@@ -258,9 +291,9 @@ public class DefaultLoggingFactory implements LoggingFactory {
         for (Map.Entry<String, JsonNode> entry : loggers.entrySet()) {
             final Logger logger = loggerContext.getLogger(entry.getKey());
             final JsonNode jsonNode = entry.getValue();
-            if (jsonNode.isTextual()) {
+            if (jsonNode.isTextual() || jsonNode.isBoolean()) {
                 // Just a level as a string
-                logger.setLevel(Level.valueOf(jsonNode.asText()));
+                logger.setLevel(toLevel(jsonNode.asText()));
             } else if (jsonNode.isObject()) {
                 // A level and an appender
                 final LoggerConfiguration configuration;
@@ -284,7 +317,6 @@ public class DefaultLoggingFactory implements LoggingFactory {
     }
 
     static Level toLevel(@Nullable String text) {
-        // required because YAML maps "off" to a boolean false
         if ("false".equalsIgnoreCase(text)) {
             // required because YAML maps "off" to a boolean false
             return Level.OFF;

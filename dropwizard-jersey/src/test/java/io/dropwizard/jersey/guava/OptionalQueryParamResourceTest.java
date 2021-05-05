@@ -1,13 +1,12 @@
 package io.dropwizard.jersey.guava;
 
-import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Optional;
 import io.dropwizard.jersey.AbstractJerseyTest;
 import io.dropwizard.jersey.DropwizardResourceConfig;
 import io.dropwizard.jersey.MyMessage;
 import io.dropwizard.jersey.MyMessageParamConverterProvider;
 import io.dropwizard.jersey.params.UUIDParam;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.GET;
@@ -22,7 +21,7 @@ public class OptionalQueryParamResourceTest extends AbstractJerseyTest {
 
     @Override
     protected Application configure() {
-        return DropwizardResourceConfig.forTesting(new MetricRegistry())
+        return DropwizardResourceConfig.forTesting()
                 .register(OptionalQueryParamResource.class)
                 .register(MyMessageParamConverterProvider.class);
     }

@@ -3,6 +3,7 @@ package io.dropwizard.util;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.SortedMap;
@@ -12,9 +13,14 @@ import java.util.regex.Pattern;
 
 import static java.util.Objects.requireNonNull;
 
-public class Size implements Comparable<Size> {
-    private static final Pattern SIZE_PATTERN = Pattern.compile("(\\d+)\\s*(\\S+)");
+/**
+ * @deprecated Use {@link DataSize} for correct SI and IEC prefixes.
+ */
+@Deprecated
+public class Size implements Comparable<Size>, Serializable {
+    private static final long serialVersionUID = 6790991929249604526L;
 
+    private static final Pattern SIZE_PATTERN = Pattern.compile("(\\d+)\\s*(\\S+)");
     private static final SortedMap<String, SizeUnit> SUFFIXES;
 
     static {
@@ -151,5 +157,57 @@ public class Size implements Comparable<Size> {
         }
 
         return Long.compare(toBytes(), other.toBytes());
+    }
+
+    /**
+     * @since 2.0
+     */
+    public DataSize toDataSize() {
+        switch (unit) {
+            case BYTES:
+                return DataSize.bytes(count);
+            case KILOBYTES:
+                return DataSize.kibibytes(count);
+            case MEGABYTES:
+                return DataSize.mebibytes(count);
+            case GIGABYTES:
+                return DataSize.gibibytes(count);
+            case TERABYTES:
+                return DataSize.tebibytes(count);
+            default:
+                throw new IllegalArgumentException("Unknown unit: " + getUnit());
+        }
+    }
+
+    /**
+     * @since 2.0
+     */
+    public static Size fromDataSize(DataSize dataSize) {
+        switch (dataSize.getUnit()) {
+            case BYTES:
+                return Size.bytes(dataSize.getQuantity());
+            case KIBIBYTES:
+                return Size.kilobytes(dataSize.getQuantity());
+            case KILOBYTES:
+                return Size.bytes(dataSize.toBytes());
+            case MEBIBYTES:
+                return Size.megabytes(dataSize.getQuantity());
+            case MEGABYTES:
+                return Size.bytes(dataSize.toBytes());
+            case GIBIBYTES:
+                return Size.gigabytes(dataSize.getQuantity());
+            case GIGABYTES:
+                return Size.bytes(dataSize.toBytes());
+            case TEBIBYTES:
+                return Size.terabytes(dataSize.getQuantity());
+            case TERABYTES:
+                return Size.bytes(dataSize.toBytes());
+            case PEBIBYTES:
+                return Size.terabytes(dataSize.toTebibytes() * 1024L);
+            case PETABYTES:
+                return Size.bytes(dataSize.toBytes());
+            default:
+                throw new IllegalArgumentException("Unknown unit: " + dataSize.getUnit());
+        }
     }
 }

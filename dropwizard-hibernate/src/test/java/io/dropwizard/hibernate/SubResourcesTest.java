@@ -8,12 +8,13 @@ import io.dropwizard.db.PooledDataSourceFactory;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 import io.dropwizard.testing.ResourceHelpers;
-import io.dropwizard.testing.junit.DropwizardAppRule;
+import io.dropwizard.testing.junit5.DropwizardAppExtension;
+import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
-import org.junit.ClassRule;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -30,6 +31,7 @@ import java.util.Optional;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+@ExtendWith(DropwizardExtensionsSupport.class)
 public class SubResourcesTest {
 
     public static class TestConfiguration extends Configuration {
@@ -60,7 +62,7 @@ public class SubResourcesTest {
             initDatabase(sessionFactory);
 
             environment.jersey().register(new UnitOfWorkApplicationListener("hr-db", sessionFactory));
-            environment.jersey().register(new PersonResource(new PersonDAO(sessionFactory), new DogDAO(sessionFactory)));
+            environment.jersey().register(new PersonResource(new PersonDAO(), new DogDAO()));
         }
 
         private void initDatabase(SessionFactory sessionFactory) {
@@ -147,20 +149,12 @@ public class SubResourcesTest {
     }
 
     public static class PersonDAO extends AbstractDAO<Person> {
-        PersonDAO(SessionFactory sessionFactory) {
-            super(sessionFactory);
-        }
-
         Optional<Person> findByName(String name) {
             return Optional.ofNullable(get(name));
         }
     }
 
     public static class DogDAO extends AbstractDAO<Dog> {
-        DogDAO(SessionFactory sessionFactory) {
-            super(sessionFactory);
-        }
-
         Optional<Dog> findByOwnerAndName(String ownerName, String dogName) {
             return query("SELECT d FROM Dog d WHERE d.owner.name=:owner AND d.name=:name")
                 .setParameter("owner", ownerName)
@@ -175,8 +169,7 @@ public class SubResourcesTest {
         }
     }
 
-    @ClassRule
-    public static DropwizardAppRule<TestConfiguration> appRule = new DropwizardAppRule<>(TestApplication.class,
+    public static DropwizardAppExtension<TestConfiguration> appRule = new DropwizardAppExtension<>(TestApplication.class,
         ResourceHelpers.resourceFilePath("hibernate-sub-resource-test.yaml"));
 
     private static String baseUri() {

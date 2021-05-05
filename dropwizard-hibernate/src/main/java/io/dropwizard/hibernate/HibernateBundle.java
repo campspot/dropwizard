@@ -2,7 +2,6 @@ package io.dropwizard.hibernate;
 
 import com.fasterxml.jackson.datatype.hibernate5.Hibernate5Module;
 import com.fasterxml.jackson.datatype.hibernate5.Hibernate5Module.Feature;
-import io.dropwizard.Configuration;
 import io.dropwizard.ConfiguredBundle;
 import io.dropwizard.db.DatabaseConfiguration;
 import io.dropwizard.db.PooledDataSourceFactory;
@@ -19,7 +18,7 @@ import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
-public abstract class HibernateBundle<T extends Configuration> implements ConfiguredBundle<T>, DatabaseConfiguration<T> {
+public abstract class HibernateBundle<T> implements ConfiguredBundle<T>, DatabaseConfiguration<T> {
     public static final String DEFAULT_NAME = "hibernate";
 
     @Nullable
@@ -69,7 +68,7 @@ public abstract class HibernateBundle<T extends Configuration> implements Config
     }
 
     @Override
-    public final void run(T configuration, Environment environment) throws Exception {
+    public void run(T configuration, Environment environment) throws Exception {
         final PooledDataSourceFactory dbConfig = getDataSourceFactory(configuration);
         this.sessionFactory = requireNonNull(sessionFactoryFactory.build(this, environment, dbConfig,
             entities, name()));

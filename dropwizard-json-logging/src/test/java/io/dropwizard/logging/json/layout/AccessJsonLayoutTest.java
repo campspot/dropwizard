@@ -7,8 +7,8 @@ import io.dropwizard.jackson.Jackson;
 import io.dropwizard.logging.json.AccessAttribute;
 import io.dropwizard.util.Maps;
 import io.dropwizard.util.Sets;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.time.ZoneId;
@@ -19,6 +19,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 public class AccessJsonLayoutTest {
@@ -26,7 +27,9 @@ public class AccessJsonLayoutTest {
     private String remoteHost = "nw-4.us.crawl.io";
     private String serverName = "sw-2.us.api.example.io";
     private String timestamp = "2018-01-01T14:35:21.000+0000";
-    private String uri = "/test/users?age=22&city=LA";
+    private String uri = "/test/users";
+    private String query = "?age=22&city=LA";
+    private String pathQuery = uri + query;
     private String url = "GET /test/users?age=22&city=LA HTTP/1.1";
     private String userAgent = "Mozilla/5.0";
     private Map<String, String> requestHeaders;
@@ -45,7 +48,7 @@ public class AccessJsonLayoutTest {
     private AccessJsonLayout accessJsonLayout = new AccessJsonLayout(jsonFormatter, timestampFormatter,
         includes, Collections.emptyMap(), Collections.emptyMap());
 
-    @Before
+    @BeforeEach
     public void setUp() {
         requestHeaders = Maps.of(
                 "Host", "api.example.io",
@@ -65,6 +68,7 @@ public class AccessJsonLayoutTest {
         when(event.getRequestParameterMap()).thenReturn(Collections.emptyMap());
         when(event.getElapsedTime()).thenReturn(100L);
         when(event.getRequestURI()).thenReturn(uri);
+        when(event.getQueryString()).thenReturn(query);
         when(event.getRequestURL()).thenReturn(url);
         when(event.getRemoteHost()).thenReturn(remoteHost);
         when(event.getResponseContent()).thenReturn(responseContent);
@@ -154,7 +158,8 @@ public class AccessJsonLayoutTest {
             entry("port", 8080), entry("requestContent", ""),
             entry("headers", this.requestHeaders),
             entry("remoteHost", remoteHost), entry("url", url),
-            entry("serverName", serverName));
+            entry("serverName", serverName),
+            entry("pathQuery", pathQuery));
     }
 
     @Test
@@ -188,6 +193,49 @@ public class AccessJsonLayoutTest {
             entry("protocol", "HTTP/1.1"), entry("status", 200),
             entry("request_time", 100L), entry("content_length", 78L),
             entry("user_agent", userAgent), entry("remote_address", remoteAddress));
+    }
+
+    @Test
+    public void testRequestAttributes() {
+        final String attribute1 = "attribute1";
+        final String attribute2 = "attribute2";
+        final String attribute3 = "attribute3";
+
+        final Map<String, String> attributes =
+            Maps.of(
+                attribute1, "value1",
+                attribute2, "value2",
+                attribute3, "value3");
+
+        when(event.getAttribute(eq(attribute1))).thenReturn(attributes.get(attribute1));
+        when(event.getAttribute(eq(attribute2))).thenReturn(attributes.get(attribute2));
+        when(event.getAttribute(eq(attribute3))).thenReturn(attributes.get(attribute3));
+
+        accessJsonLayout.setRequestAttributes(attributes.keySet());
+        assertThat(accessJsonLayout.toJsonMap(event))
+            .containsEntry("requestAttributes", attributes);
+
+    }
+
+    @Test
+    public void testRequestAttributesWithNull() {
+        final String attribute1 = "attribute1";
+        final String attribute2 = "attribute2";
+        final String attribute3 = "attribute3";
+
+        final Map<String, String> attributes =
+            Maps.of(
+                attribute1, "value1",
+                attribute2, "value2");
+
+        when(event.getAttribute(eq(attribute1))).thenReturn(attributes.get(attribute1));
+        when(event.getAttribute(eq(attribute2))).thenReturn(attributes.get(attribute2));
+        when(event.getAttribute(eq(attribute3))).thenReturn(null);
+
+        accessJsonLayout.setRequestAttributes(Sets.of(attribute1, attribute2, attribute3));
+        assertThat(accessJsonLayout.toJsonMap(event))
+            .containsEntry("requestAttributes", Maps.of(attribute1, "value1", attribute2, "value2"));
+
     }
 
     @Test

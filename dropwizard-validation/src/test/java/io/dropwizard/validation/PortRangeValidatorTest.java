@@ -1,7 +1,7 @@
 package io.dropwizard.validation;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.validation.Valid;
 import javax.validation.Validator;
@@ -10,8 +10,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assume.assumeThat;
+import static org.assertj.core.api.Assumptions.assumeThat;
 
 public class PortRangeValidatorTest {
     @SuppressWarnings("PublicField")
@@ -30,9 +29,9 @@ public class PortRangeValidatorTest {
     private final Validator validator = BaseValidator.newValidator();
     private final Example example = new Example();
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
-        assumeThat(Locale.getDefault().getLanguage(), is("en"));
+        assumeThat(Locale.getDefault().getLanguage()).isEqualTo("en");
     }
 
     @Test
@@ -79,6 +78,6 @@ public class PortRangeValidatorTest {
     public void rejectsInvalidPortsInList() {
         example.ports = Collections.singletonList(-1);
         assertThat(ConstraintViolations.format(validator.validate(example)))
-            .containsOnly("ports[0].<collection element> must be between 1 and 65535");
+            .containsOnly("ports[0].<list element> must be between 1 and 65535");
     }
 }

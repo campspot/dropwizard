@@ -1,14 +1,12 @@
 package io.dropwizard.jersey;
 
-import com.codahale.metrics.MetricRegistry;
 import io.dropwizard.jersey.dummy.DummyResource;
-import io.dropwizard.logging.BootstrapLogging;
-import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
 import org.glassfish.jersey.server.model.Resource;
-import org.glassfish.jersey.test.JerseyTest;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
+import javax.inject.Inject;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -21,48 +19,38 @@ import javax.ws.rs.core.MediaType;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class DropwizardResourceConfigTest {
-    static {
-        BootstrapLogging.bootstrap();
+    private DropwizardResourceConfig rc = DropwizardResourceConfig.forTesting();
+    private AbstractJerseyTest jerseyTest = new AbstractJerseyTest() {
+        @Override
+        protected Application configure() {
+            return rc;
+        }
+    };
+
+    @AfterEach
+    void teardown() throws Exception {
+        jerseyTest.tearDown();
     }
 
-    private DropwizardResourceConfig rc;
-
-    @Before
-    public void setUp() {
-        rc = DropwizardResourceConfig.forTesting(new MetricRegistry());
-    }
-
-    // Start and stop a jersey test instance so that our resource config
+    // Start jersey test instance so that our resource config
     // successfully hooks into the Jersey start up application event
     private void runJersey() {
-        final JerseyTest jerseyTest = new JerseyTest() {
-            @Override
-            protected Application configure() {
-                return rc;
-            }
-        };
-
         try {
             jerseyTest.setUp();
         } catch (Exception e) {
             throw new RuntimeException("Could not start jersey", e);
-        } finally {
-            try {
-                jerseyTest.tearDown();
-            } catch (Exception ignored) {
-            }
         }
     }
 
     @Test
-    public void findsResourceClassInPackage() {
+    void findsResourceClassInPackage() {
         rc.packages(DummyResource.class.getPackage().getName());
 
         assertThat(rc.getClasses()).contains(DummyResource.class);
     }
 
     @Test
-    public void findsResourceClassesInPackageAndSubpackage() {
+    void findsResourceClassesInPackageAndSubpackage() {
         rc.packages(getClass().getPackage().getName());
 
         assertThat(rc.getClasses()).contains(
@@ -72,7 +60,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void combinesAlRegisteredClasses() {
+    void combinesAlRegisteredClasses() {
         rc.register(new TestResource());
         rc.registerClasses(ResourceInterface.class, ImplementingResource.class);
 
@@ -84,7 +72,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void combinesAlRegisteredClassesPathOnMethodLevel() {
+    void combinesAlRegisteredClassesPathOnMethodLevel() {
         rc.register(new TestResource());
         rc.register(new ResourcePathOnMethodLevel());
 
@@ -100,7 +88,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsNoInterfaces() {
+    void logsNoInterfaces() {
         rc.packages(getClass().getName());
 
         runJersey();
@@ -108,13 +96,13 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsNoEndpointsWhenNoResourcesAreRegistered() {
+    void logsNoEndpointsWhenNoResourcesAreRegistered() {
         runJersey();
         assertThat(rc.getEndpointsInfo()).contains("    NONE");
     }
 
     @Test
-    public void logsEndpoints() {
+    void logsEndpoints() {
         rc.register(TestResource.class);
         rc.register(ImplementingResource.class);
 
@@ -125,7 +113,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsEndpointsSorted() {
+    void logsEndpointsSorted() {
         rc.register(DummyResource.class);
         rc.register(TestResource2.class);
         rc.register(TestResource.class);
@@ -145,7 +133,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsNestedEndpoints() {
+    void logsNestedEndpoints() {
         rc.register(WrapperResource.class);
 
         runJersey();
@@ -156,7 +144,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsProgrammaticalEndpoints() {
+    void logsProgrammaticalEndpoints() {
         Resource.Builder resourceBuilder = Resource.builder("/prefix");
         resourceBuilder.addChildResource(Resource.from(DummyResource.class));
         resourceBuilder.addChildResource(Resource.from(TestResource.class));
@@ -178,7 +166,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void testEndpointLoggerPathCleaning() {
+    void testEndpointLoggerPathCleaning() {
         String dirtyPath = " /this//is///a/dirty//path/     ";
         String anotherDirtyPath = "a/l//p/h/  /a/b /////  e/t";
 
@@ -187,7 +175,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void duplicatePathsTest() {
+    void duplicatePathsTest() {
         rc.register(TestDuplicateResource.class);
 
         runJersey();
@@ -200,7 +188,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logEndpointWithRootSubresource() {
+    void logEndpointWithRootSubresource() {
         rc.register(new ShoppingStore());
 
         runJersey();
@@ -212,7 +200,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logEndpointBinder() {
+    void logEndpointBinder() {
         rc.register(ResourceInterface.class);
         rc.register(new AbstractBinder() {
             @Override
@@ -229,7 +217,24 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsEndpointsContextPathUrlPattern() {
+    void logResourceWithHK2Binder() {
+        rc.register(ResourceWithInjectedDependency.class);
+        rc.register(new org.glassfish.hk2.utilities.binding.AbstractBinder() {
+            @Override
+            protected void configure() {
+                bindAsContract(Dependency.class);
+            }
+        });
+
+        runJersey();
+        final String expectedLog = String.format("The following paths were found for the configured resources:%n" + "%n"
+            + "    GET     /another (io.dropwizard.jersey.DropwizardResourceConfigTest.ResourceWithInjectedDependency)");
+
+        assertThat(rc.getEndpointsInfo()).contains(expectedLog);
+    }
+
+    @Test
+    void logsEndpointsContextPathUrlPattern() {
         rc.setContextPath("/context");
         rc.setUrlPattern("/pattern");
         rc.register(TestResource.class);
@@ -242,7 +247,25 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsEndpointsContextPath() {
+    void testMixedClassAndInstanceRegistration() {
+        rc.setContextPath("/context");
+        rc.setUrlPattern("/pattern");
+        Object[] registrations = new Object[] {
+                TestResource.class,
+                new ImplementingResource()
+        };
+        for (Object registration : registrations) {
+            rc.register(registration);
+        }
+
+        runJersey();
+        assertThat(rc.getEndpointsInfo())
+                .contains("GET     /context/pattern/dummy (io.dropwizard.jersey.DropwizardResourceConfigTest.TestResource)")
+                .contains("GET     /context/pattern/another (io.dropwizard.jersey.DropwizardResourceConfigTest.ImplementingResource)");
+    }
+
+    @Test
+    void logsEndpointsContextPath() {
         rc.setContextPath("/context");
         rc.register(TestResource.class);
         rc.register(ImplementingResource.class);
@@ -254,7 +277,7 @@ public class DropwizardResourceConfigTest {
     }
 
     @Test
-    public void logsEndpointsNoSlashContextPath() {
+    void logsEndpointsNoSlashContextPath() {
         rc.setContextPath("context");
         rc.register(TestResource.class);
         rc.register(ImplementingResource.class);
@@ -263,6 +286,20 @@ public class DropwizardResourceConfigTest {
         assertThat(rc.getEndpointsInfo())
             .contains("GET     /context/dummy (io.dropwizard.jersey.DropwizardResourceConfigTest.TestResource)")
             .contains("GET     /context/another (io.dropwizard.jersey.DropwizardResourceConfigTest.ImplementingResource)");
+    }
+
+    @Test
+    void logsEndpointsRelativePaths() {
+        rc.register(new TestRootResource());
+        rc.register(new TestRelativePathResource());
+
+        assertThat(rc.allClasses()).contains(TestRootResource.class, TestRelativePathResource.class);
+
+        runJersey();
+        assertThat(rc.getEndpointsInfo())
+                .contains("GET     / (io.dropwizard.jersey.DropwizardResourceConfigTest.TestRootResource)")
+                .contains("GET     /relative/child1 (io.dropwizard.jersey.DropwizardResourceConfigTest.TestRelativePathResource)")
+                .contains("GET     /relative/child2 (io.dropwizard.jersey.DropwizardResourceConfigTest.TestRelativePathResource)");
     }
 
     @Path("/dummy")
@@ -283,6 +320,29 @@ public class DropwizardResourceConfigTest {
         @DELETE
         public String fooDelete() {
             return "bar";
+        }
+    }
+
+    @Path("relative")
+    public static class TestRelativePathResource {
+        @GET
+        @Path("child1")
+        public String child1() {
+            return "foo";
+        }
+
+        @GET
+        @Path("child2")
+        public String child2() {
+            return "bar";
+        }
+    }
+
+    @Path("/")
+    public static class TestRootResource {
+        @GET
+        public String helloWorld() {
+            return "helloWorld";
         }
     }
 
@@ -319,9 +379,9 @@ public class DropwizardResourceConfigTest {
     }
 
     @Path("/another")
-    public static interface ResourceInterface {
+    public interface ResourceInterface {
         @GET
-        public String bar();
+        String bar();
     }
 
     @Path("/")
@@ -374,5 +434,22 @@ public class DropwizardResourceConfigTest {
         @Path("/address")
         public String getAddress() {return "B";}
 
+    }
+
+    public static class ResourceWithInjectedDependency implements ResourceInterface {
+        private Dependency dependency;
+
+        @Inject
+        public ResourceWithInjectedDependency(Dependency dependency) {
+            this.dependency = dependency;
+        }
+
+        public String bar() {
+            return dependency.get();
+        }
+    }
+
+    public static class Dependency {
+        public String get() {return "A";}
     }
 }

@@ -10,8 +10,8 @@ import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.hibernate.context.internal.ManagedSessionContext;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import java.lang.reflect.Method;
@@ -45,19 +45,20 @@ public class UnitOfWorkApplicationListenerTest {
     private final Transaction transaction = mock(Transaction.class);
     private final Transaction analyticsTransaction = mock(Transaction.class);
 
-    @SuppressWarnings("unchecked")
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         listener.registerSessionFactory(HibernateBundle.DEFAULT_NAME, sessionFactory);
         listener.registerSessionFactory("analytics", analyticsSessionFactory);
 
         when(sessionFactory.openSession()).thenReturn(session);
+        when(sessionFactory.getCurrentSession()).thenReturn(session);
         when(session.getSessionFactory()).thenReturn(sessionFactory);
         when(session.beginTransaction()).thenReturn(transaction);
         when(session.getTransaction()).thenReturn(transaction);
         when(transaction.getStatus()).thenReturn(ACTIVE);
 
         when(analyticsSessionFactory.openSession()).thenReturn(analyticsSession);
+        when(analyticsSessionFactory.getCurrentSession()).thenReturn(analyticsSession);
         when(analyticsSession.getSessionFactory()).thenReturn(analyticsSessionFactory);
         when(analyticsSession.beginTransaction()).thenReturn(analyticsTransaction);
         when(analyticsSession.getTransaction()).thenReturn(analyticsTransaction);

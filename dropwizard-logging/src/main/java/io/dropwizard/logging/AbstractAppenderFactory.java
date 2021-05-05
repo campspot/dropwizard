@@ -10,7 +10,7 @@ import ch.qos.logback.core.LayoutBase;
 import ch.qos.logback.core.pattern.PatternLayoutBase;
 import ch.qos.logback.core.spi.DeferredProcessingAware;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
+import io.dropwizard.logback.ThrottlingAppenderWrapper;
 import io.dropwizard.logging.async.AsyncAppenderFactory;
 import io.dropwizard.logging.filter.FilterFactory;
 import io.dropwizard.logging.layout.DiscoverableLayoutFactory;
@@ -110,7 +110,7 @@ public abstract class AbstractAppenderFactory<E extends DeferredProcessingAware>
     protected String logFormat;
 
     @Nullable
-    protected DiscoverableLayoutFactory layout;
+    protected DiscoverableLayoutFactory<E> layout;
 
     @NotNull
     protected TimeZone timeZone = TimeZone.getTimeZone("UTC");
@@ -152,12 +152,18 @@ public abstract class AbstractAppenderFactory<E extends DeferredProcessingAware>
         this.discardingThreshold = discardingThreshold;
     }
 
+    /**
+     * @since 2.0
+     */
     @JsonProperty
     @Nullable
     public Duration getMessageRate() {
         return messageRate;
     }
 
+    /**
+     * @since 2.0
+     */
     @JsonProperty
     public void setMessageRate(Duration messageRate) {
         this.messageRate = messageRate;
@@ -226,11 +232,11 @@ public abstract class AbstractAppenderFactory<E extends DeferredProcessingAware>
     }
 
     @Nullable
-    public DiscoverableLayoutFactory getLayout() {
+    public DiscoverableLayoutFactory<?> getLayout() {
         return layout;
     }
 
-    public void setLayout(@Nullable DiscoverableLayoutFactory layout) {
+    public void setLayout(@Nullable DiscoverableLayoutFactory<E> layout) {
         this.layout = layout;
     }
 
@@ -253,11 +259,10 @@ public abstract class AbstractAppenderFactory<E extends DeferredProcessingAware>
         if (messageRate == null) {
             return asyncAppender;
         } else {
-            return new ThrottlingAppenderWrapper(asyncAppender, messageRate);
+            return new ThrottlingAppenderWrapper<>(asyncAppender, messageRate.getQuantity(), messageRate.getUnit());
         }
     }
 
-    @SuppressWarnings("unchecked")
     protected LayoutBase<E> buildLayout(LoggerContext context, LayoutFactory<E> defaultLayoutFactory) {
         final LayoutBase<E> layoutBase;
         if (layout == null) {

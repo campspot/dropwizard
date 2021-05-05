@@ -11,12 +11,13 @@ import io.dropwizard.jersey.setup.JerseyEnvironment;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 import org.hibernate.SessionFactory;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
@@ -42,8 +43,7 @@ public class HibernateBundleTest {
         }
     };
 
-    @Before
-    @SuppressWarnings("unchecked")
+    @BeforeEach
     public void setUp() throws Exception {
         when(environment.healthChecks()).thenReturn(healthChecks);
         when(environment.jersey()).thenReturn(jerseyEnvironment);
@@ -100,11 +100,10 @@ public class HibernateBundleTest {
 
         assertThat(captor.getValue().getSessionFactory()).isEqualTo(sessionFactory);
 
-        assertThat(captor.getValue().getValidationQuery()).isEqualTo("SELECT something");
+        assertThat(captor.getValue().getValidationQuery()).isEqualTo(Optional.of("SELECT something"));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     public void registersACustomNameOfHealthCheckAndDBPoolMetrics() throws Exception {
         final HibernateBundle<Configuration> customBundle = new HibernateBundle<Configuration>(entities, factory) {
             @Override

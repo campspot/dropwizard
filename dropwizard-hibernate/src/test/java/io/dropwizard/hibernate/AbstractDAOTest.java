@@ -8,8 +8,9 @@ import org.hibernate.SessionFactory;
 import org.hibernate.proxy.HibernateProxy;
 import org.hibernate.proxy.LazyInitializer;
 import org.hibernate.query.Query;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
@@ -29,10 +30,6 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("deprecation")
 public class AbstractDAOTest {
     private static class MockDAO extends AbstractDAO<String> {
-        MockDAO(SessionFactory factory) {
-            super(factory);
-        }
-
         @Override
         public Session currentSession() {
             return super.currentSession();
@@ -44,7 +41,7 @@ public class AbstractDAOTest {
         }
 
         @Override
-        public Query namedQuery(String queryName) throws HibernateException {
+        public Query<?> namedQuery(String queryName) throws HibernateException {
             return super.namedQuery(queryName);
         }
 
@@ -97,16 +94,25 @@ public class AbstractDAOTest {
     @SuppressWarnings("unchecked")
     private final Query<String> query = mock(Query.class);
     private final Session session = mock(Session.class);
-    private final MockDAO dao = new MockDAO(factory);
+    private final MockDAO dao = new MockDAO();
 
-    @Before
+    @BeforeEach
     public void setup() throws Exception {
         when(criteriaBuilder.createQuery(same(String.class))).thenReturn(criteriaQuery);
+        when(factory.openSession()).thenReturn(session);
         when(factory.getCurrentSession()).thenReturn(session);
+        when(session.getSessionFactory()).thenReturn(factory);
         when(session.createCriteria(String.class)).thenReturn(criteria);
         when(session.getCriteriaBuilder()).thenReturn(criteriaBuilder);
         when(session.getNamedQuery(anyString())).thenReturn(query);
         when(session.createQuery(anyString(), same(String.class))).thenReturn(query);
+
+        UnitOfWorkContext.setSessionFactory(factory);
+    }
+
+    @AfterEach
+    public void tearDown() throws Exception {
+        UnitOfWorkContext.clear();
     }
 
     @Test

@@ -14,7 +14,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ThreadPool;
-import org.hibernate.validator.constraints.NotEmpty;
+import javax.validation.constraints.NotEmpty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +78,7 @@ public class DefaultServerFactory extends AbstractServerFactory {
     @NotNull
     private List<ConnectorFactory> adminConnectors = Collections.singletonList(HttpConnectorFactory.admin());
 
-    @Min(2)
+    @Min(4)
     private int adminMaxThreads = 64;
 
     @Min(1)

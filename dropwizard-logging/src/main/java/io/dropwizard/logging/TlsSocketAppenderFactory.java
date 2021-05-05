@@ -4,10 +4,10 @@ import ch.qos.logback.core.spi.DeferredProcessingAware;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.hibernate.validator.constraints.NotEmpty;
 
 import javax.annotation.Nullable;
 import javax.net.SocketFactory;
+import javax.validation.constraints.NotEmpty;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -139,6 +139,7 @@ import java.util.List;
  * For more configuration parameters, see {@link TcpSocketAppenderFactory}.
  *
  * @see TcpSocketAppenderFactory
+ * @since 2.0
  */
 @JsonTypeName("tls")
 public class TlsSocketAppenderFactory<E extends DeferredProcessingAware> extends TcpSocketAppenderFactory<E> {
@@ -341,7 +342,7 @@ public class TlsSocketAppenderFactory<E extends DeferredProcessingAware> extends
     }
 
     private SslContextFactory createSslContextFactory() {
-        SslContextFactory factory = new SslContextFactory();
+        SslContextFactory factory = new SslContextFactory.Server();
         if (keyStorePath != null) {
             factory.setKeyStorePath(keyStorePath);
         }

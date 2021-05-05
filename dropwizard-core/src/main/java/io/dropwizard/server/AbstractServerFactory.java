@@ -54,7 +54,6 @@ import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -205,6 +204,20 @@ import java.util.stream.Collectors;
  *           method and request URI.
  *         </td>
  *     </tr>
+ *     <tr>
+ *         <td>{@code dumpAfterStart}</td>
+ *         <td>true</td>
+ *         <td>
+ *           Whether or not to dump jetty diagnostics after start.
+ *         </td>
+ *     </tr>
+ *     <tr>
+ *         <td>{@code dumpBeforeStop}</td>
+ *         <td>true</td>
+ *         <td>
+ *           Whether or not to dump jetty diagnostics before stop.
+ *         </td>
+ *     </tr>
  * </table>
  *
  * @see DefaultServerFactory
@@ -212,11 +225,10 @@ import java.util.stream.Collectors;
  */
 public abstract class AbstractServerFactory implements ServerFactory {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerFactory.class);
-    private static final Pattern WINDOWS_NEWLINE = Pattern.compile("\\r\\n?");
 
     @Valid
     @Nullable
-    private RequestLogFactory requestLog;
+    private RequestLogFactory<?> requestLog;
 
     @Valid
     @NotNull
@@ -226,7 +238,7 @@ public abstract class AbstractServerFactory implements ServerFactory {
     @NotNull
     private ServerPushFilterFactory serverPush = new ServerPushFilterFactory();
 
-    @Min(2)
+    @Min(4)
     private int maxThreads = 1024;
 
     @Min(1)
@@ -276,6 +288,10 @@ public abstract class AbstractServerFactory implements ServerFactory {
 
     private boolean enableThreadNameFilter = true;
 
+    private boolean dumpAfterStart = false;
+
+    private boolean dumpBeforeStop = false;
+
     @JsonIgnore
     @ValidationMethod(message = "must have a smaller minThreads than maxThreads")
     public boolean isThreadPoolSizedCorrectly() {
@@ -283,7 +299,7 @@ public abstract class AbstractServerFactory implements ServerFactory {
     }
 
     @JsonProperty("requestLog")
-    public synchronized RequestLogFactory getRequestLogFactory() {
+    public synchronized RequestLogFactory<?> getRequestLogFactory() {
         if (requestLog == null) {
             // Lazy init to avoid a hard dependency to logback
             requestLog = new LogbackAccessRequestLogFactory();
@@ -292,7 +308,7 @@ public abstract class AbstractServerFactory implements ServerFactory {
     }
 
     @JsonProperty("requestLog")
-    public synchronized void setRequestLogFactory(RequestLogFactory requestLog) {
+    public synchronized void setRequestLogFactory(RequestLogFactory<?> requestLog) {
         this.requestLog = requestLog;
     }
 
@@ -448,6 +464,7 @@ public abstract class AbstractServerFactory implements ServerFactory {
         return registerDefaultExceptionMappers;
     }
 
+    @JsonProperty
     public void setRegisterDefaultExceptionMappers(Boolean registerDefaultExceptionMappers) {
         this.registerDefaultExceptionMappers = registerDefaultExceptionMappers;
     }
@@ -456,6 +473,7 @@ public abstract class AbstractServerFactory implements ServerFactory {
         return detailedJsonProcessingExceptionMapper;
     }
 
+    @JsonProperty
     public void setDetailedJsonProcessingExceptionMapper(Boolean detailedJsonProcessingExceptionMapper) {
         this.detailedJsonProcessingExceptionMapper = detailedJsonProcessingExceptionMapper;
     }
@@ -498,6 +516,38 @@ public abstract class AbstractServerFactory implements ServerFactory {
     @JsonProperty
     public void setEnableThreadNameFilter(boolean enableThreadNameFilter) {
         this.enableThreadNameFilter = enableThreadNameFilter;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public boolean getDumpAfterStart() {
+        return dumpAfterStart;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public void setDumpAfterStart(boolean dumpAfterStart) {
+        this.dumpAfterStart = dumpAfterStart;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public boolean getDumpBeforeStop() {
+        return dumpBeforeStop;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public void setDumpBeforeStop(boolean dumpBeforeStop) {
+        this.dumpBeforeStop = dumpBeforeStop;
     }
 
     protected Handler createAdminServlet(Server server,
@@ -577,6 +627,8 @@ public abstract class AbstractServerFactory implements ServerFactory {
         server.addBean(errorHandler);
         server.setStopAtShutdown(true);
         server.setStopTimeout(shutdownGracePeriod.toMilliseconds());
+        server.setDumpAfterStart(dumpAfterStart);
+        server.setDumpBeforeStop(dumpBeforeStop);
         return server;
     }
 

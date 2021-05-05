@@ -4,10 +4,11 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.annotation.ExceptionMetered;
 import com.codahale.metrics.annotation.Metered;
 import com.codahale.metrics.annotation.Timed;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.servlet.ReadListener;
+import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -20,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.codahale.metrics.MetricRegistry.name;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +32,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class TaskServletTest {
+class TaskServletTest {
     private final Task gc = mock(Task.class);
     private final PostBodyTask printJSON = mock(PostBodyTask.class);
 
@@ -39,8 +41,8 @@ public class TaskServletTest {
     private final HttpServletRequest request = mock(HttpServletRequest.class);
     private final HttpServletResponse response = mock(HttpServletResponse.class);
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    void setUp() {
         when(gc.getName()).thenReturn("gc");
         when(printJSON.getName()).thenReturn("print-json");
         servlet.add(gc);
@@ -48,7 +50,7 @@ public class TaskServletTest {
     }
 
     @Test
-    public void returnsA404WhenNotFound() throws Exception {
+    void returnsA404WhenNotFound() throws Exception {
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/test");
 
@@ -58,9 +60,10 @@ public class TaskServletTest {
     }
 
     @Test
-    public void runsATaskWhenFound() throws Exception {
+    void runsATaskWhenFound() throws Exception {
         final PrintWriter output = mock(PrintWriter.class);
-        final ServletInputStream bodyStream = new TestServletInputStream(new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
 
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/gc");
@@ -74,9 +77,46 @@ public class TaskServletTest {
     }
 
     @Test
-    public void passesQueryStringParamsAlong() throws Exception {
+    void responseHasSpecifiedContentType() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
+        when(request.getInputStream()).thenReturn(bodyStream);
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getPathInfo()).thenReturn("/gc");
+        when(request.getParameterNames()).thenReturn(Collections.enumeration(Collections.emptyList()));
+        when(response.getWriter()).thenReturn(mock(PrintWriter.class));
+
+        when(gc.getResponseContentType()).thenReturn(Optional.of("application/json"));
+
+        servlet.service(request, response);
+
+        verify(response).setContentType("application/json");
+    }
+
+    @Test
+    void responseHasDefaultContentTypeWhenNoneSpecified() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
+        when(request.getInputStream()).thenReturn(bodyStream);
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getPathInfo()).thenReturn("/gc");
+        when(request.getParameterNames()).thenReturn(Collections.enumeration(Collections.emptyList()));
+        when(response.getWriter()).thenReturn(mock(PrintWriter.class));
+
+        servlet.service(request, response);
+
+        verify(response).setContentType("text/plain;charset=UTF-8");
+    }
+
+    @Test
+    void passesQueryStringParamsAlong() throws Exception {
         final PrintWriter output = mock(PrintWriter.class);
-        final ServletInputStream bodyStream = new TestServletInputStream(new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
 
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/gc");
@@ -91,10 +131,11 @@ public class TaskServletTest {
     }
 
     @Test
-    public void passesPostBodyAlongToPostBodyTasks() throws Exception {
+    void passesPostBodyAlongToPostBodyTasks() throws Exception {
         String body = "{\"json\": true}";
         final PrintWriter output = mock(PrintWriter.class);
-        final ServletInputStream bodyStream = new TestServletInputStream(new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)));
 
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/print-json");
@@ -109,10 +150,14 @@ public class TaskServletTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    public void returnsA500OnExceptions() throws Exception {
+    void returnsA500OnExceptions() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/gc");
         when(request.getParameterNames()).thenReturn(Collections.enumeration(Collections.emptyList()));
+        when(request.getInputStream()).thenReturn(bodyStream);
 
         final PrintWriter output = mock(PrintWriter.class);
         when(response.getWriter()).thenReturn(output);
@@ -131,19 +176,19 @@ public class TaskServletTest {
      * depends on this to perform record metrics on Tasks
      */
     @Test
-    public void verifyTaskExecuteMethod() {
+    void verifyTaskExecuteMethod() {
         assertThatCode(() -> Task.class.getMethod("execute", Map.class, PrintWriter.class))
             .doesNotThrowAnyException();
     }
 
     @Test
-    public void verifyPostBodyTaskExecuteMethod() {
+    void verifyPostBodyTaskExecuteMethod() {
         assertThatCode(() -> PostBodyTask.class.getMethod("execute", Map.class, String.class, PrintWriter.class))
             .doesNotThrowAnyException();
     }
 
     @Test
-    public void returnAllTaskNamesLexicallyOnGet() throws Exception {
+    void returnAllTaskNamesLexicallyOnGet() throws Exception {
         try (StringWriter sw = new StringWriter();
              PrintWriter pw = new PrintWriter(sw)) {
             when(request.getMethod()).thenReturn("GET");
@@ -158,7 +203,7 @@ public class TaskServletTest {
     }
 
     @Test
-    public void returnsA404WhenGettingUnknownTask() throws Exception {
+    void returnsA404WhenGettingUnknownTask() throws Exception {
         when(request.getMethod()).thenReturn("GET");
         when(request.getPathInfo()).thenReturn("/absent");
         servlet.service(request, response);
@@ -167,7 +212,7 @@ public class TaskServletTest {
     }
 
     @Test
-    public void returnsA405WhenGettingTaskByName() throws Exception {
+    void returnsA405WhenGettingTaskByName() throws Exception {
         when(request.getMethod()).thenReturn("GET");
         when(request.getPathInfo()).thenReturn("/gc");
         servlet.service(request, response);
@@ -176,16 +221,21 @@ public class TaskServletTest {
     }
 
     @Test
-    public void testRunsTimedTask() throws Exception {
+    void testRunsTimedTask() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
         final Task timedTask = new Task("timed-task") {
             @Override
             @Timed(name = "vacuum-cleaning")
-            public void execute(Map<String, List<String>> parameters, PrintWriter output) throws Exception {
+            public void execute(Map<String, List<String>> parameters, PrintWriter output) {
                 output.println("Vacuum cleaning");
             }
         };
         servlet.add(timedTask);
 
+        when(request.getInputStream()).thenReturn(bodyStream);
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/timed-task");
         when(response.getWriter()).thenReturn(mock(PrintWriter.class));
@@ -196,7 +246,10 @@ public class TaskServletTest {
     }
 
     @Test
-    public void testRunsMeteredTask() throws Exception {
+    void testRunsMeteredTask() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
         final Task meteredTask = new Task("metered-task") {
             @Override
             @Metered(name = "vacuum-cleaning")
@@ -207,6 +260,8 @@ public class TaskServletTest {
         servlet.add(meteredTask);
 
         when(request.getMethod()).thenReturn("POST");
+        when(request.getInputStream()).thenReturn(bodyStream);
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
         when(request.getPathInfo()).thenReturn("/metered-task");
         when(response.getWriter()).thenReturn(mock(PrintWriter.class));
 
@@ -216,16 +271,21 @@ public class TaskServletTest {
     }
 
     @Test
-    public void testRunsExceptionMeteredTask() throws Exception {
+    void testRunsExceptionMeteredTask() throws Exception {
+        final ServletInputStream bodyStream = new TestServletInputStream(
+            new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)));
+
         final Task exceptionMeteredTask = new Task("exception-metered-task") {
             @Override
             @ExceptionMetered(name = "vacuum-cleaning-exceptions")
-            public void execute(Map<String, List<String>> parameters, PrintWriter output) throws Exception {
+            public void execute(Map<String, List<String>> parameters, PrintWriter output) {
                 throw new RuntimeException("The engine has died");
             }
         };
         servlet.add(exceptionMeteredTask);
 
+        when(request.getInputStream()).thenReturn(bodyStream);
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
         when(request.getMethod()).thenReturn("POST");
         when(request.getPathInfo()).thenReturn("/exception-metered-task");
         when(response.getWriter()).thenReturn(mock(PrintWriter.class));
@@ -234,6 +294,66 @@ public class TaskServletTest {
 
         assertThat(metricRegistry.getMeters()).containsKey(name(exceptionMeteredTask.getClass(),
             "vacuum-cleaning-exceptions"));
+    }
+
+    @Test
+    void testReturnsA404ForTaskRoot() throws ServletException, IOException {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getPathInfo()).thenReturn(null);
+
+        servlet.service(request, response);
+
+        verify(response).sendError(404);
+    }
+
+    @Test
+    void testPrintStackTrackWhenEnabled() throws Exception {
+        final TaskConfiguration taskConfiguration = new TaskConfiguration();
+        taskConfiguration.setPrintStackTraceOnError(true);
+        final TaskServlet servlet = new TaskServlet(metricRegistry, taskConfiguration);
+        servlet.add(gc);
+        final ServletInputStream bodyStream = new TestServletInputStream(
+                new ByteArrayInputStream(new byte[0]));
+
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getPathInfo()).thenReturn("/gc");
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
+        when(request.getInputStream()).thenReturn(bodyStream);
+
+        final StringWriter stringWriter = new StringWriter();
+        final PrintWriter output = new PrintWriter(stringWriter, true);
+        when(response.getWriter()).thenReturn(output);
+
+        doThrow(new RuntimeException("whoops")).when(gc).execute(any(), any());
+
+        servlet.service(request, response);
+
+        assertThat(stringWriter.toString().trim()).contains("java.lang.RuntimeException: whoops");
+    }
+
+    @Test
+    void testDoNotPrintStackTrackWhenDisabled() throws Exception {
+        final TaskConfiguration taskConfiguration = new TaskConfiguration();
+        taskConfiguration.setPrintStackTraceOnError(false);
+        final TaskServlet servlet = new TaskServlet(metricRegistry, taskConfiguration);
+        servlet.add(gc);
+        final ServletInputStream bodyStream = new TestServletInputStream(
+                new ByteArrayInputStream(new byte[0]));
+
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getPathInfo()).thenReturn("/gc");
+        when(request.getParameterNames()).thenReturn(Collections.emptyEnumeration());
+        when(request.getInputStream()).thenReturn(bodyStream);
+
+        final StringWriter stringWriter = new StringWriter();
+        final PrintWriter output = new PrintWriter(stringWriter, true);
+        when(response.getWriter()).thenReturn(output);
+
+        doThrow(new RuntimeException("whoops")).when(gc).execute(any(), any());
+
+        servlet.service(request, response);
+
+        assertThat(stringWriter.toString().trim()).isEqualTo("whoops");
     }
 
     @SuppressWarnings("InputStreamSlowMultibyteRead")

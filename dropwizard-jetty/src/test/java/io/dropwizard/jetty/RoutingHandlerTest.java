@@ -9,7 +9,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -56,7 +56,6 @@ public class RoutingHandlerTest {
     }
 
     @Test
-    @SuppressWarnings({ "rawtypes", "unchecked" })
     public void routesRequestsToTheConnectorSpecificHandler() throws Exception {
         final HttpChannel channel = mock(HttpChannel.class);
         when(channel.getConnector()).thenReturn(connector1);

@@ -20,7 +20,7 @@ import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.eclipse.jetty.util.thread.ScheduledExecutorScheduler;
 import org.eclipse.jetty.util.thread.ThreadPool;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import javax.validation.ConstraintViolation;
 import javax.validation.Validator;
@@ -40,9 +40,9 @@ import static org.apache.commons.lang3.reflect.FieldUtils.getField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.entry;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assume.assumeFalse;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class HttpsConnectorFactoryTest {
     private static final String WINDOWS_MY_KEYSTORE_NAME = "Windows-MY";
@@ -97,7 +97,7 @@ public class HttpsConnectorFactoryTest {
         factory.setKeyStorePassword("password"); // necessary to avoid a prompt for a password
         factory.setSupportedProtocols(supportedProtocols);
 
-        SslContextFactory sslContextFactory = factory.configureSslContextFactory(new SslContextFactory());
+        SslContextFactory sslContextFactory = factory.configureSslContextFactory(new SslContextFactory.Server());
         assertThat(Arrays.asList(sslContextFactory.getIncludeProtocols())).isEqualTo(supportedProtocols);
     }
 
@@ -109,7 +109,7 @@ public class HttpsConnectorFactoryTest {
         factory.setKeyStorePassword("password"); // necessary to avoid a prompt for a password
         factory.setExcludedProtocols(excludedProtocols);
 
-        SslContextFactory sslContextFactory = factory.configureSslContextFactory(new SslContextFactory());
+        SslContextFactory sslContextFactory = factory.configureSslContextFactory(new SslContextFactory.Server());
         assertThat(Arrays.asList(sslContextFactory.getExcludeProtocols())).isEqualTo(excludedProtocols);
     }
 
@@ -138,7 +138,7 @@ public class HttpsConnectorFactoryTest {
         final HttpsConnectorFactory factory = new HttpsConnectorFactory();
         factory.setKeyStoreType(WINDOWS_MY_KEYSTORE_NAME);
 
-        assertNotNull(factory.configureSslContextFactory(new SslContextFactory()));
+        assertNotNull(factory.configureSslContextFactory(new SslContextFactory.Server()));
     }
 
     @Test
@@ -148,7 +148,7 @@ public class HttpsConnectorFactoryTest {
         final HttpsConnectorFactory factory = new HttpsConnectorFactory();
         factory.setKeyStoreType(WINDOWS_MY_KEYSTORE_NAME);
         assertThatIllegalStateException().isThrownBy(() ->
-            factory.configureSslContextFactory(new SslContextFactory()));
+            factory.configureSslContextFactory(new SslContextFactory.Server()));
     }
 
     @Test
@@ -189,63 +189,64 @@ public class HttpsConnectorFactoryTest {
         final Connector connector = https.build(server, metrics, "test-https-connector", threadPool);
         assertThat(connector).isInstanceOf(ServerConnector.class);
 
-        final ServerConnector serverConnector = (ServerConnector) connector;
-        assertThat(serverConnector.getPort()).isEqualTo(8443);
-        assertThat(serverConnector.getHost()).isEqualTo("127.0.0.1");
-        assertThat(serverConnector.getName()).isEqualTo("test-https-connector");
-        assertThat(serverConnector.getServer()).isSameAs(server);
-        assertThat(serverConnector.getScheduler()).isInstanceOf(ScheduledExecutorScheduler.class);
-        assertThat(serverConnector.getExecutor()).isSameAs(threadPool);
-
-        final Jetty93InstrumentedConnectionFactory jetty93SslConnectionFacttory =
-            (Jetty93InstrumentedConnectionFactory) serverConnector.getConnectionFactory("ssl");
-        assertThat(jetty93SslConnectionFacttory).isInstanceOf(Jetty93InstrumentedConnectionFactory.class);
-        assertThat(jetty93SslConnectionFacttory.getTimer()).isSameAs(
-            metrics.timer("org.eclipse.jetty.server.HttpConnectionFactory.127.0.0.1.8443.connections"));
-        final SslContextFactory sslContextFactory = ((SslConnectionFactory) jetty93SslConnectionFacttory
-            .getConnectionFactory()).getSslContextFactory();
-
-        assertThat(getField(SslContextFactory.class, "_keyStoreResource", true).get(sslContextFactory))
-            .isEqualTo(Resource.newResource("/etc/app/server.ks"));
-        assertThat(sslContextFactory.getKeyStoreType()).isEqualTo("JKS");
-        assertThat(getField(SslContextFactory.class, "_keyStorePassword", true).get(sslContextFactory).toString())
-            .isEqualTo("correct_horse");
-        assertThat(sslContextFactory.getKeyStoreProvider()).isEqualTo("BC");
-        assertThat(getField(SslContextFactory.class, "_trustStoreResource", true).get(sslContextFactory))
-            .isEqualTo(Resource.newResource("/etc/app/server.ts"));
-        assertThat(sslContextFactory.getKeyStoreType()).isEqualTo("JKS");
-        assertThat(getField(SslContextFactory.class, "_trustStorePassword", true).get(sslContextFactory).toString())
-            .isEqualTo("battery_staple");
-        assertThat(sslContextFactory.getKeyStoreProvider()).isEqualTo("BC");
-        assertThat(getField(SslContextFactory.class, "_keyManagerPassword", true).get(sslContextFactory).toString())
-            .isEqualTo("new_overlords");
-        assertThat(sslContextFactory.getNeedClientAuth()).isTrue();
-        assertThat(sslContextFactory.getWantClientAuth()).isTrue();
-        assertThat(sslContextFactory.getCertAlias()).isEqualTo("alt_server");
-        assertThat(sslContextFactory.getCrlPath()).isEqualTo(new File("/etc/ctr_list.txt").getAbsolutePath());
-        assertThat(sslContextFactory.isEnableCRLDP()).isTrue();
-        assertThat(sslContextFactory.isEnableOCSP()).isTrue();
-        assertThat(sslContextFactory.getMaxCertPathLength()).isEqualTo(4);
-        assertThat(sslContextFactory.getOcspResponderURL()).isEqualTo("http://windc1/ocsp");
-        assertThat(sslContextFactory.getProvider()).isEqualTo("BC");
-        assertThat(sslContextFactory.isRenegotiationAllowed()).isFalse();
-        assertThat(getField(SslContextFactory.class, "_endpointIdentificationAlgorithm", true).get(sslContextFactory))
-            .isEqualTo("HTTPS");
-        assertThat(sslContextFactory.isValidateCerts()).isTrue();
-        assertThat(sslContextFactory.isValidatePeerCerts()).isTrue();
-        assertThat(sslContextFactory.getIncludeProtocols()).containsOnly("TLSv1.1", "TLSv1.2");
-        assertThat(sslContextFactory.getIncludeCipherSuites()).containsOnly("TLS_DHE_RSA.*", "TLS_ECDHE.*");
-
-        final ConnectionFactory httpConnectionFactory = serverConnector.getConnectionFactory("http/1.1");
-        assertThat(httpConnectionFactory).isInstanceOf(HttpConnectionFactory.class);
-        final HttpConfiguration httpConfiguration = ((HttpConnectionFactory) httpConnectionFactory)
-            .getHttpConfiguration();
-        assertThat(httpConfiguration.getSecureScheme()).isEqualTo("https");
-        assertThat(httpConfiguration.getSecurePort()).isEqualTo(8443);
-        assertThat(httpConfiguration.getCustomizers()).hasAtLeastOneElementOfType(SecureRequestCustomizer.class);
-
-        connector.stop();
-        server.stop();
+        try (final ServerConnector serverConnector = (ServerConnector) connector) {
+            assertThat(serverConnector.getPort()).isEqualTo(8443);
+            assertThat(serverConnector.getHost()).isEqualTo("127.0.0.1");
+            assertThat(serverConnector.getName()).isEqualTo("test-https-connector");
+            assertThat(serverConnector.getServer()).isSameAs(server);
+            assertThat(serverConnector.getScheduler()).isInstanceOf(ScheduledExecutorScheduler.class);
+            assertThat(serverConnector.getExecutor()).isSameAs(threadPool);
+    
+            final Jetty93InstrumentedConnectionFactory jetty93SslConnectionFacttory =
+                (Jetty93InstrumentedConnectionFactory) serverConnector.getConnectionFactory("ssl");
+            assertThat(jetty93SslConnectionFacttory).isInstanceOf(Jetty93InstrumentedConnectionFactory.class);
+            assertThat(jetty93SslConnectionFacttory.getTimer()).isSameAs(
+                metrics.timer("org.eclipse.jetty.server.HttpConnectionFactory.127.0.0.1.8443.connections"));
+            final SslContextFactory sslContextFactory = ((SslConnectionFactory) jetty93SslConnectionFacttory
+                .getConnectionFactory()).getSslContextFactory();
+    
+            assertThat(getField(SslContextFactory.class, "_keyStoreResource", true).get(sslContextFactory))
+                .isEqualTo(Resource.newResource("/etc/app/server.ks"));
+            assertThat(sslContextFactory.getKeyStoreType()).isEqualTo("JKS");
+            assertThat(getField(SslContextFactory.class, "_keyStorePassword", true).get(sslContextFactory).toString())
+                .isEqualTo("correct_horse");
+            assertThat(sslContextFactory.getKeyStoreProvider()).isEqualTo("BC");
+            assertThat(getField(SslContextFactory.class, "_trustStoreResource", true).get(sslContextFactory))
+                .isEqualTo(Resource.newResource("/etc/app/server.ts"));
+            assertThat(sslContextFactory.getKeyStoreType()).isEqualTo("JKS");
+            assertThat(getField(SslContextFactory.class, "_trustStorePassword", true).get(sslContextFactory).toString())
+                .isEqualTo("battery_staple");
+            assertThat(sslContextFactory.getKeyStoreProvider()).isEqualTo("BC");
+            assertThat(getField(SslContextFactory.class, "_keyManagerPassword", true).get(sslContextFactory).toString())
+                .isEqualTo("new_overlords");
+            assertThat(sslContextFactory.getNeedClientAuth()).isTrue();
+            assertThat(sslContextFactory.getWantClientAuth()).isTrue();
+            assertThat(sslContextFactory.getCertAlias()).isEqualTo("alt_server");
+            assertThat(sslContextFactory.getCrlPath()).isEqualTo(new File("/etc/ctr_list.txt").getAbsolutePath());
+            assertThat(sslContextFactory.isEnableCRLDP()).isTrue();
+            assertThat(sslContextFactory.isEnableOCSP()).isTrue();
+            assertThat(sslContextFactory.getMaxCertPathLength()).isEqualTo(4);
+            assertThat(sslContextFactory.getOcspResponderURL()).isEqualTo("http://windc1/ocsp");
+            assertThat(sslContextFactory.getProvider()).isEqualTo("BC");
+            assertThat(sslContextFactory.isRenegotiationAllowed()).isFalse();
+            assertThat(getField(SslContextFactory.class, "_endpointIdentificationAlgorithm", true).get(sslContextFactory))
+                .isEqualTo("HTTPS");
+            assertThat(sslContextFactory.isValidateCerts()).isTrue();
+            assertThat(sslContextFactory.isValidatePeerCerts()).isTrue();
+            assertThat(sslContextFactory.getIncludeProtocols()).containsOnly("TLSv1.1", "TLSv1.2");
+            assertThat(sslContextFactory.getIncludeCipherSuites()).containsOnly("TLS_DHE_RSA.*", "TLS_ECDHE.*");
+    
+            final ConnectionFactory httpConnectionFactory = serverConnector.getConnectionFactory("http/1.1");
+            assertThat(httpConnectionFactory).isInstanceOf(HttpConnectionFactory.class);
+            final HttpConfiguration httpConfiguration = ((HttpConnectionFactory) httpConnectionFactory)
+                .getHttpConfiguration();
+            assertThat(httpConfiguration.getSecureScheme()).isEqualTo("https");
+            assertThat(httpConfiguration.getSecurePort()).isEqualTo(8443);
+            assertThat(httpConfiguration.getCustomizers()).hasAtLeastOneElementOfType(SecureRequestCustomizer.class);
+        } finally {
+            connector.stop();
+            server.stop();
+        }
     }
 
     @Test

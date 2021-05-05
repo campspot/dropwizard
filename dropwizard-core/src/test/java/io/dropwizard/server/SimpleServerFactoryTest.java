@@ -1,6 +1,7 @@
 package io.dropwizard.server;
 
-import com.codahale.metrics.MetricRegistry;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.configuration.YamlConfigurationFactory;
 import io.dropwizard.jackson.DiscoverableSubtypeResolver;
@@ -16,14 +17,13 @@ import io.dropwizard.util.Resources;
 import io.dropwizard.validation.BaseValidator;
 import org.eclipse.jetty.server.AbstractNetworkConnector;
 import org.eclipse.jetty.server.Server;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.validation.Validator;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -36,18 +36,18 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class SimpleServerFactoryTest {
 
     private SimpleServerFactory http;
-    private final ObjectMapper objectMapper = Jackson.newObjectMapper();
-    private Validator validator = BaseValidator.newValidator();
-    private Environment environment = new Environment("testEnvironment", objectMapper, validator, new MetricRegistry(),
-            ClassLoader.getSystemClassLoader());
+    private Environment environment = new Environment("testEnvironment");
 
-    @Before
-    public void setUp() throws Exception {
+    @BeforeEach
+    void setUp() throws Exception {
+        final ObjectMapper objectMapper = environment.getObjectMapper();
+        final Validator validator = environment.getValidator();
         objectMapper.getSubtypeResolver().registerSubtypes(ConsoleAppenderFactory.class,
                 FileAppenderFactory.class, SyslogAppenderFactory.class, HttpConnectorFactory.class);
         http = (SimpleServerFactory) new YamlConfigurationFactory<>(ServerFactory.class, validator, objectMapper, "dw")
@@ -55,29 +55,29 @@ public class SimpleServerFactoryTest {
     }
 
     @Test
-    public void isDiscoverable() throws Exception {
+    void isDiscoverable() throws Exception {
         assertThat(new DiscoverableSubtypeResolver().getDiscoveredSubtypes())
                 .contains(SimpleServerFactory.class);
     }
 
     @Test
-    public void testGetAdminContext() {
+    void testGetAdminContext() {
         assertThat(http.getAdminContextPath()).isEqualTo("/secret");
     }
 
     @Test
-    public void testGetApplicationContext() {
+    void testGetApplicationContext() {
         assertThat(http.getApplicationContextPath()).isEqualTo("/service");
     }
 
     @Test
-    public void testGetPort() {
+    void testGetPort() {
         final HttpConnectorFactory connector = (HttpConnectorFactory) http.getConnector();
         assertThat(connector.getPort()).isEqualTo(0);
     }
 
     @Test
-    public void testBuild() throws Exception {
+    void testBuild() throws Exception {
         environment.jersey().register(new TestResource());
         environment.admin().addTask(new TestTask());
 
@@ -94,11 +94,25 @@ public class SimpleServerFactoryTest {
     }
 
     @Test
-    public void testConfiguredEnvironment() {
+    void testConfiguredEnvironment() {
         http.configure(environment);
 
         assertEquals(http.getAdminContextPath(), environment.getAdminContext().getContextPath());
         assertEquals(http.getApplicationContextPath(), environment.getApplicationContext().getContextPath());
+    }
+
+    @Test
+    void testDeserializeWithoutJsonAutoDetect() {
+        final ObjectMapper objectMapper = Jackson.newObjectMapper()
+            .setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+
+        assertThatCode(() -> new YamlConfigurationFactory<>(
+            SimpleServerFactory.class,
+            BaseValidator.newValidator(),
+            objectMapper,
+            "dw"
+            ).build(new File(Resources.getResource("yaml/simple_server.yml").toURI()))
+        ).doesNotThrowAnyException();
     }
 
     public static String httpRequest(String requestMethod, String url) throws Exception {

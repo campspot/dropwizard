@@ -5,11 +5,13 @@ import io.dropwizard.db.DataSourceFactory;
 import io.dropwizard.lifecycle.setup.LifecycleEnvironment;
 import io.dropwizard.logging.BootstrapLogging;
 import io.dropwizard.setup.Environment;
+import org.hibernate.CacheMode;
+import org.hibernate.HibernateException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.Map;
@@ -28,7 +30,7 @@ public class UnitOfWorkAwareProxyFactoryTest {
 
     private SessionFactory sessionFactory;
 
-    @Before
+    @BeforeEach
     public void setUp() throws Exception {
         final HibernateBundle<?> bundle = mock(HibernateBundle.class);
         final Environment environment = mock(Environment.class);
@@ -112,6 +114,21 @@ public class UnitOfWorkAwareProxyFactoryTest {
         assertThat(oAuthAuthenticator.authenticate("gr6f9y0")).isTrue();
     }
 
+    @Test
+    public void testNestedCall() {
+        final UnitOfWorkAwareProxyFactory unitOfWorkAwareProxyFactory =
+                new UnitOfWorkAwareProxyFactory("default", sessionFactory);
+
+        final NestedCall nestedCall = unitOfWorkAwareProxyFactory
+                .create(NestedCall.class, SessionFactory.class, sessionFactory);
+
+        // Both method calls are expected to succeed (asserts are in NestedCall)
+        // Run a non-nested call as reference
+        nestedCall.normalCall();
+        // Run a nested call
+        nestedCall.nestedCall();
+    }
+
     static class SessionDao {
 
         private SessionFactory sessionFactory;
@@ -167,10 +184,51 @@ public class UnitOfWorkAwareProxyFactoryTest {
         @Override
         protected void configureSession() {
             super.configureSession();
-            Transaction transaction = getSession().beginTransaction();
-            getSession().createNativeQuery("insert into user_sessions values ('gr6f9y0', 'jeff_29')")
+            Session currentSession = UnitOfWorkContext.getCurrentSession();
+            Transaction transaction = currentSession.beginTransaction();
+            currentSession.createNativeQuery("insert into user_sessions values ('gr6f9y0', 'jeff_29')")
                 .executeUpdate();
             transaction.commit();
+        }
+    }
+
+    static class NestedCall {
+
+        private final SessionFactory sessionFactory;
+
+        public NestedCall(SessionFactory sessionFactory) {
+            this.sessionFactory = sessionFactory;
+        }
+
+        @UnitOfWork
+        public void normalCall() {
+            assertThat(transactionActive())
+                .withFailMessage("Expected transaction to be active in normal call")
+                .isTrue();
+        }
+
+        @UnitOfWork
+        public void nestedCall() {
+            assertThat(transactionActive())
+                .withFailMessage("Expected transaction to be active before nested call")
+                .isTrue();
+            normalCall();
+            assertThat(transactionActive())
+                .withFailMessage("Expected transaction to be active after nested call")
+                .isTrue();
+        }
+
+        @UnitOfWork(cacheMode = CacheMode.IGNORE)
+        public void invalidNestedCall() {
+            normalCall();
+        }
+
+        private boolean transactionActive() {
+            try {
+                return sessionFactory.getCurrentSession().getTransaction().isActive();
+            } catch (HibernateException ex) {
+                return false;
+            }
         }
     }
 }

@@ -42,17 +42,28 @@ import static java.util.Objects.requireNonNull;
 public class TaskServlet extends HttpServlet {
     private static final long serialVersionUID = 7404713218661358124L;
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskServlet.class);
-    private static final String CONTENT_TYPE = "text/plain;charset=UTF-8";
+    private static final String DEFAULT_CONTENT_TYPE = "text/plain;charset=UTF-8";
     private final ConcurrentMap<String, Task> tasks;
     private final ConcurrentMap<Task, TaskExecutor> taskExecutors;
 
     private final MetricRegistry metricRegistry;
+    private final TaskConfiguration taskConfiguration;
 
     /**
      * Creates a new TaskServlet.
      */
     public TaskServlet(MetricRegistry metricRegistry) {
+        this(metricRegistry, new TaskConfiguration());
+    }
+
+    /**
+     * Creates a new TaskServlet.
+     *
+     * @since 2.0
+     */
+    public TaskServlet(MetricRegistry metricRegistry, TaskConfiguration taskConfiguration) {
         this.metricRegistry = metricRegistry;
+        this.taskConfiguration = taskConfiguration;
         this.tasks = new ConcurrentHashMap<>();
         this.taskExecutors = new ConcurrentHashMap<>();
     }
@@ -100,7 +111,7 @@ public class TaskServlet extends HttpServlet {
                          HttpServletResponse resp) throws ServletException, IOException {
         if (Strings.isNullOrEmpty(req.getPathInfo())) {
             try (final PrintWriter output = resp.getWriter()) {
-                resp.setContentType(CONTENT_TYPE);
+                resp.setContentType(DEFAULT_CONTENT_TYPE);
                 getTasks().stream()
                     .map(Task::getName)
                     .sorted()
@@ -116,9 +127,10 @@ public class TaskServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req,
                           HttpServletResponse resp) throws ServletException, IOException {
-        final Task task = tasks.get(req.getPathInfo());
+        final String pathInfo = req.getPathInfo();
+        final Task task = pathInfo != null ? tasks.get(pathInfo) : null;
         if (task != null) {
-            resp.setContentType(CONTENT_TYPE);
+            resp.setContentType(task.getResponseContentType().orElse(DEFAULT_CONTENT_TYPE));
             final PrintWriter output = resp.getWriter();
             try {
                 final TaskExecutor taskExecutor = taskExecutors.get(task);
@@ -128,7 +140,9 @@ public class TaskServlet extends HttpServlet {
                 resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 output.println();
                 output.println(e.getMessage());
-                e.printStackTrace(output);
+                if (taskConfiguration.isPrintStackTraceOnError()) {
+                    e.printStackTrace(output);
+                }
             } finally {
                 output.close();
             }

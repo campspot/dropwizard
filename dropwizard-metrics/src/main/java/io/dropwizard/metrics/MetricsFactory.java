@@ -36,6 +36,11 @@ import java.util.List;
  *         <td>No reporters.</td>
  *         <td>A list of {@link ReporterFactory reporters} to report metrics.</td>
  *     </tr>
+ *     <tr>
+ *         <td>reportOnStop</td>
+ *         <td>{@code false}</td>
+ *         <td>To report metrics one last time when stopping Dropwizard.</td>
+ *     </tr>
  * </table>
  */
 public class MetricsFactory {
@@ -48,6 +53,8 @@ public class MetricsFactory {
     @Valid
     @NotNull
     private List<ReporterFactory> reporters = Collections.emptyList();
+
+    private boolean reportOnStop = false;
 
     @JsonProperty
     public List<ReporterFactory> getReporters() {
@@ -70,6 +77,28 @@ public class MetricsFactory {
     }
 
     /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public boolean isReportOnStop() {
+        return reportOnStop;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+    public void setReportOnStop(boolean reportOnStop) {
+        this.reportOnStop = reportOnStop;
+    }
+
+    /**
+     * @since 2.0
+     */
+    @JsonProperty
+
+
+    /**
      * Configures the given lifecycle with the {@link com.codahale.metrics.ScheduledReporter
      * reporters} configured for the given registry.
      * <p />
@@ -86,7 +115,8 @@ public class MetricsFactory {
             try {
                 final ScheduledReporterManager manager =
                         new ScheduledReporterManager(reporter.build(registry),
-                                                     reporter.getFrequency().orElseGet(this::getFrequency));
+                                                     reporter.getFrequency().orElseGet(this::getFrequency),
+                                                     isReportOnStop());
                 environment.manage(manager);
             } catch (Exception e) {
                 LOGGER.warn("Failed to create reporter, metrics may not be properly reported.", e);
@@ -96,6 +126,6 @@ public class MetricsFactory {
 
     @Override
     public String toString() {
-        return "MetricsFactory{frequency=" + frequency + ", reporters=" + reporters + '}';
+        return "MetricsFactory{frequency=" + frequency + ", reporters=" + reporters + ", reportOnStop=" + reportOnStop + '}';
     }
 }

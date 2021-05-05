@@ -5,14 +5,12 @@ import org.hibernate.Criteria;
 import org.hibernate.Hibernate;
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.hibernate.query.Query;
 import org.hibernate.query.internal.AbstractProducedQuery;
 
+import javax.persistence.criteria.CriteriaQuery;
 import java.io.Serializable;
 import java.util.List;
-
-import javax.persistence.criteria.CriteriaQuery;
 
 import static java.util.Objects.requireNonNull;
 
@@ -22,26 +20,22 @@ import static java.util.Objects.requireNonNull;
  * @param <E> the class which this DAO manages
  */
 public class AbstractDAO<E> {
-    private final SessionFactory sessionFactory;
     private final Class<?> entityClass;
 
     /**
-     * Creates a new DAO with a given session provider.
-     *
-     * @param sessionFactory    a session provider
+     * Creates a new DAO for {@code <E>}.
      */
-    public AbstractDAO(SessionFactory sessionFactory) {
-        this.sessionFactory = requireNonNull(sessionFactory);
+    public AbstractDAO() {
         this.entityClass = Generics.getTypeParameter(getClass());
     }
 
     /**
-     * Returns the current {@link Session}.
+     * Returns the current {@link Session} according to {@link UnitOfWorkAspect}.
      *
      * @return the current session
      */
     protected Session currentSession() {
-        return sessionFactory.getCurrentSession();
+        return UnitOfWorkContext.getCurrentSession();
     }
 
     /**
@@ -72,7 +66,7 @@ public class AbstractDAO<E> {
      * @return the named query
      * @see Session#getNamedQuery(String)
      */
-    protected Query namedQuery(String queryName) throws HibernateException {
+    protected Query<?> namedQuery(String queryName) throws HibernateException {
         return currentSession().getNamedQuery(requireNonNull(queryName));
     }
 

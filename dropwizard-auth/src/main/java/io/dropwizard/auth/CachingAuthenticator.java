@@ -19,8 +19,8 @@ import java.util.stream.Collectors;
 import static com.codahale.metrics.MetricRegistry.name;
 
 /**
- * An {@link Authenticator} decorator which uses a Guava cache to temporarily cache credentials and
- * their corresponding principals.
+ * An {@link Authenticator} decorator which uses a Caffeine cache to temporarily
+ * cache credentials and their corresponding principals.
  *
  * @param <C> the type of credentials the authenticator can authenticate
  * @param <P> the type of principals the authenticator returns
@@ -141,6 +141,7 @@ public class CachingAuthenticator<C, P extends Principal> implements Authenticat
      * Exception thrown by {@link CacheLoader#load(Object)} when the authenticator returns {@link Optional#empty()}.
      * This is used to prevent caching of invalid credentials.
      */
+    @SuppressWarnings("serial")
     private static class InvalidCredentialsException extends Exception {
     }
 }

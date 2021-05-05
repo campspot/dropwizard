@@ -1,5 +1,7 @@
 package io.dropwizard.db;
 
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import io.dropwizard.configuration.ResourceConfigurationSourceProvider;
 import io.dropwizard.configuration.YamlConfigurationFactory;
@@ -8,15 +10,16 @@ import io.dropwizard.util.Duration;
 import io.dropwizard.validation.BaseValidator;
 import org.apache.tomcat.jdbc.pool.interceptor.ConnectionState;
 import org.apache.tomcat.jdbc.pool.interceptor.StatementFinalizer;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nullable;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +33,7 @@ public class DataSourceFactoryTest {
     @Nullable
     private ManagedDataSource dataSource;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         factory = new DataSourceFactory();
         factory.setUrl("jdbc:h2:mem:DbTest-" + System.currentTimeMillis() + ";user=sa");
@@ -38,7 +41,7 @@ public class DataSourceFactoryTest {
         factory.setValidationQuery("SELECT 1");
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         if (null != dataSource) {
             dataSource.stop();
@@ -135,7 +138,26 @@ public class DataSourceFactoryTest {
         assertThat(factory.getUser()).isEqualTo("pg-user");
         assertThat(factory.getPassword()).isEqualTo("iAMs00perSecrEET");
         assertThat(factory.getUrl()).isEqualTo("jdbc:postgresql://db.example.com/db-prod");
-        assertThat(factory.getValidationQuery()).isEqualTo("/* Health Check */ SELECT 1");
+        assertThat(factory.getValidationQuery()).isEqualTo(Optional.of("/* Health Check */ SELECT 1"));
         assertThat(factory.getValidationQueryTimeout()).isEqualTo(Optional.empty());
     }
+
+    @Test
+    public void metricsRecorded() throws Exception {
+        dataSource();
+        Map<String, Gauge> poolMetrics = metricRegistry.getGauges(MetricFilter.startsWith("io.dropwizard.db.ManagedPooledDataSource.test."));
+        assertThat(poolMetrics.keySet()).contains(
+            "io.dropwizard.db.ManagedPooledDataSource.test.active",
+            "io.dropwizard.db.ManagedPooledDataSource.test.idle",
+            "io.dropwizard.db.ManagedPooledDataSource.test.waiting",
+            "io.dropwizard.db.ManagedPooledDataSource.test.size",
+            "io.dropwizard.db.ManagedPooledDataSource.test.created",
+            "io.dropwizard.db.ManagedPooledDataSource.test.borrowed",
+            "io.dropwizard.db.ManagedPooledDataSource.test.reconnected",
+            "io.dropwizard.db.ManagedPooledDataSource.test.released",
+            "io.dropwizard.db.ManagedPooledDataSource.test.releasedIdle",
+            "io.dropwizard.db.ManagedPooledDataSource.test.returned",
+            "io.dropwizard.db.ManagedPooledDataSource.test.removeAbandoned");
+    }
+
 }

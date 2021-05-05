@@ -8,7 +8,13 @@ import io.dropwizard.jersey.caching.CacheControlledResponseFeature;
 import io.dropwizard.jersey.params.AbstractParamConverterProvider;
 import io.dropwizard.jersey.sessions.SessionFactoryProvider;
 import io.dropwizard.jersey.validation.FuzzyEnumParamConverterProvider;
+import io.dropwizard.util.JavaVersion;
 import io.dropwizard.util.Strings;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.LoaderClassPath;
+import org.glassfish.jersey.internal.inject.AbstractBinder;
+import org.glassfish.jersey.internal.inject.Providers;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.server.ServerProperties;
 import org.glassfish.jersey.server.model.Resource;
@@ -21,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,8 +37,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import static java.util.Objects.requireNonNull;
 
 public class DropwizardResourceConfig extends ResourceConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger(DropwizardResourceConfig.class);
@@ -44,15 +54,11 @@ public class DropwizardResourceConfig extends ResourceConfig {
     private String contextPath = "/";
     private final ComponentLoggingListener loggingListener = new ComponentLoggingListener(this);
 
-    public DropwizardResourceConfig(MetricRegistry metricRegistry) {
-        this(false, metricRegistry);
-    }
-
     public DropwizardResourceConfig() {
-        this(true, null);
+        this(null);
     }
 
-    public DropwizardResourceConfig(boolean testOnly, @Nullable MetricRegistry metricRegistry) {
+    public DropwizardResourceConfig(@Nullable MetricRegistry metricRegistry) {
         super();
 
         if (metricRegistry == null) {
@@ -76,8 +82,27 @@ public class DropwizardResourceConfig extends ResourceConfig {
         register(new SessionFactoryProvider.Binder());
     }
 
-    public static DropwizardResourceConfig forTesting(MetricRegistry metricRegistry) {
-        return new DropwizardResourceConfig(true, metricRegistry);
+    /**
+     * Build a {@link DropwizardResourceConfig} which makes Jersey Test run on a random port,
+     * also see {@code org.glassfish.jersey.test.TestProperties#CONTAINER_PORT}.
+     *
+     * @since 2.0
+     */
+    public static DropwizardResourceConfig forTesting() {
+        return forTesting(null);
+    }
+
+    /**
+     * Build a {@link DropwizardResourceConfig} which makes Jersey Test run on a random port,
+     * also see {@code org.glassfish.jersey.test.TestProperties#CONTAINER_PORT}.
+     *
+     * @since 2.0
+     */
+    public static DropwizardResourceConfig forTesting(@Nullable MetricRegistry metricRegistry) {
+        final DropwizardResourceConfig config = new DropwizardResourceConfig(metricRegistry);
+        // See org.glassfish.jersey.test.TestProperties#CONTAINER_PORT
+        config.property("jersey.config.test.container.port", "0");
+        return config;
     }
 
     public String getUrlPattern() {
@@ -88,14 +113,20 @@ public class DropwizardResourceConfig extends ResourceConfig {
         this.urlPattern = urlPattern;
     }
 
+    /**
+     * @since 2.0
+     */
     public String getContextPath() {
         return contextPath;
     }
 
-    public void setContextPath(String contextPath){
+    public void setContextPath(String contextPath) {
         this.contextPath = contextPath;
     }
 
+    /**
+     * @since 2.0
+     */
     public String getEndpointsInfo() {
         return loggingListener.getEndpointsInfo();
     }
@@ -113,8 +144,87 @@ public class DropwizardResourceConfig extends ResourceConfig {
         return allClasses;
     }
 
+    @Override
+    public ResourceConfig register(final Object component) {
+        final Object object = requireNonNull(component);
+        Class<?> clazz = object.getClass();
+        // If a class gets passed through as an object, cast to Class and register directly
+        if (component instanceof Class<?>) {
+            return super.register((Class<?>) component);
+        } else if (Providers.isProvider(clazz) || org.glassfish.hk2.utilities.Binder.class.isAssignableFrom(clazz)) {
+            // If Jersey supports this component's class (including Binders), register directly
+            return super.register(object);
+        } else {
+            // Else register a binder that binds the instance to its class type
+            try {
+                // Need to create a new subclass dynamically here because Jersey
+                // doesn't add new bindings for the same class
+                final ClassPool pool = ClassPool.getDefault();
+                pool.insertClassPath(new LoaderClassPath(this.getClass().getClassLoader()));
+                final CtClass cc = pool.makeClass(SpecificBinder.class.getName() + UUID.randomUUID());
+                cc.setSuperclass(pool.get(SpecificBinder.class.getName()));
+                final Object binderProxy;
+                if (JavaVersion.isJava8()) {
+                    binderProxy = cc.toClass().getConstructor(Object.class, Class.class).newInstance(object, clazz);
+                } else {
+                    binderProxy = cc.toClass(SpecificBinder.class).getConstructor(Object.class, Class.class).newInstance(object, clazz);
+                }
+                super.register(binderProxy);
+                return super.register(clazz);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     static String cleanUpPath(String path) {
         return PATH_DIRTY_SLASHES.matcher(path).replaceAll("/").trim();
+    }
+
+    private static String mergePaths(@NotNull String context, String... pathSegments) {
+        if (pathSegments == null || pathSegments.length == 0) {
+            return cleanUpPath(context);
+        }
+
+        final StringBuilder path = new StringBuilder();
+        if (context.endsWith("/")) {
+            path.append(context, 0, context.length() - 1);
+        } else {
+            path.append(context);
+        }
+
+        for (String segment : pathSegments) {
+            if (Strings.isNullOrEmpty(segment)) {
+                continue;
+            }
+            if ("/".equals(segment)) {
+                path.append('/');
+            } else {
+                final int startIndex = segment.startsWith("/") ? 1 : 0;
+                final int endIndex = segment.endsWith("/") ? segment.length() - 1 : segment.length();
+                path.append('/').append(segment, startIndex, endIndex);
+            }
+        }
+
+        return cleanUpPath(path.toString());
+    }
+
+    /**
+     * @since 2.0
+     */
+    public static class SpecificBinder extends AbstractBinder {
+        private Object object;
+        private Class<?> clazz;
+
+        public SpecificBinder(Object object, Class<?> clazz) {
+            this.object = object;
+            this.clazz = clazz;
+        }
+
+        @Override
+        public void configure() {
+            bind(object).to(clazz);
+        }
     }
 
     private static class EndpointLogLine {
@@ -151,7 +261,7 @@ public class DropwizardResourceConfig extends ResourceConfig {
         private List<Resource> resources = Collections.emptyList();
         private Set<Class<?>> providers = Collections.emptySet();
 
-        public ComponentLoggingListener(DropwizardResourceConfig config) {
+        ComponentLoggingListener(DropwizardResourceConfig config) {
             this.config = config;
         }
 
@@ -162,12 +272,12 @@ public class DropwizardResourceConfig extends ResourceConfig {
                 providers = event.getProviders();
 
                 final String resourceClasses = resources.stream()
-                    .map(x -> x.getClass().getCanonicalName())
-                    .collect(Collectors.joining(", "));
+                        .map(x -> x.getClass().getCanonicalName())
+                        .collect(Collectors.joining(", "));
 
                 final String providerClasses = providers.stream()
-                    .map(Class::getCanonicalName)
-                    .collect(Collectors.joining(", "));
+                        .map(Class::getCanonicalName)
+                        .collect(Collectors.joining(", "));
 
                 LOGGER.debug("resources = {}", resourceClasses);
                 LOGGER.debug("providers = {}", providerClasses);
@@ -182,7 +292,7 @@ public class DropwizardResourceConfig extends ResourceConfig {
                     continue;
                 }
 
-                final String path = cleanUpPath(contextPath + Strings.nullToEmpty(resource.getPath()));
+                final String path = mergePaths(contextPath, resource.getPath());
                 final Class<?> handler = method.getInvocable().getHandler().getHandlerClass();
                 switch (method.getType()) {
                     case RESOURCE_METHOD:
@@ -190,10 +300,10 @@ public class DropwizardResourceConfig extends ResourceConfig {
                         break;
                     case SUB_RESOURCE_LOCATOR:
                         final ResolvedType responseType = TYPE_RESOLVER
-                            .resolve(method.getInvocable().getResponseType());
+                                .resolve(method.getInvocable().getResponseType());
                         final Class<?> erasedType = !responseType.getTypeBindings().isEmpty() ?
-                            responseType.getTypeBindings().getBoundType(0).getErasedType() :
-                            responseType.getErasedType();
+                                responseType.getTypeBindings().getBoundType(0).getErasedType() :
+                                responseType.getErasedType();
 
                         final Resource res = Resource.from(erasedType);
                         if (res == null) {
@@ -214,7 +324,7 @@ public class DropwizardResourceConfig extends ResourceConfig {
         private List<EndpointLogLine> logResourceLines(Resource resource, String contextPath) {
             final List<EndpointLogLine> resourceLines = new ArrayList<>();
             for (Resource child : resource.getChildResources()) {
-                resourceLines.addAll(logResourceLines(child, cleanUpPath(contextPath + Strings.nullToEmpty(resource.getPath()))));
+                resourceLines.addAll(logResourceLines(child, mergePaths(contextPath, resource.getPath())));
             }
 
             resourceLines.addAll(logMethodLines(resource, contextPath));
@@ -227,12 +337,12 @@ public class DropwizardResourceConfig extends ResourceConfig {
             final Set<EndpointLogLine> endpointLogLines = new TreeSet<>(new EndpointComparator());
             final String contextPath = config.getContextPath();
             final String normalizedContextPath = contextPath.isEmpty() || contextPath.equals("/") ? "" :
-                contextPath.startsWith("/") ? contextPath : "/" + contextPath;
+                    contextPath.startsWith("/") ? contextPath : "/" + contextPath;
             final String pattern = config.getUrlPattern().endsWith("/*") ?
-                config.getUrlPattern().substring(0, config.getUrlPattern().length() - 1) :
-                config.getUrlPattern();
+                    config.getUrlPattern().substring(0, config.getUrlPattern().length() - 1) :
+                    config.getUrlPattern();
 
-            final String path = cleanUpPath(normalizedContextPath + pattern);
+            final String path = mergePaths(normalizedContextPath, pattern);
 
             msg.append("The following paths were found for the configured resources:");
             msg.append(NEWLINE).append(NEWLINE);
@@ -242,10 +352,10 @@ public class DropwizardResourceConfig extends ResourceConfig {
             }
 
             final List<EndpointLogLine> providerLines = providers.stream()
-                .map(Resource::from)
-                .filter(Objects::nonNull)
-                .flatMap(res -> logResourceLines(res, path).stream())
-                .collect(Collectors.toList());
+                    .map(Resource::from)
+                    .filter(Objects::nonNull)
+                    .flatMap(res -> logResourceLines(res, path).stream())
+                    .collect(Collectors.toList());
 
             endpointLogLines.addAll(providerLines);
 

@@ -6,28 +6,24 @@ import io.dropwizard.jackson.Jackson;
 import io.dropwizard.jersey.DropwizardResourceConfig;
 import io.dropwizard.jersey.errors.ErrorMessage;
 import io.dropwizard.jersey.jackson.JacksonFeature;
+import io.dropwizard.jersey.jackson.JacksonMessageBodyProvider;
 import io.dropwizard.jersey.optional.EmptyOptionalExceptionMapper;
 import io.dropwizard.lifecycle.setup.LifecycleEnvironment;
 import io.dropwizard.logging.BootstrapLogging;
 import io.dropwizard.setup.Environment;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.test.JerseyTest;
-import org.glassfish.jersey.test.TestProperties;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
-import org.junit.After;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nullable;
-import javax.ws.rs.GET;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.*;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.HttpHeaders;
@@ -47,10 +43,6 @@ public class JerseyIntegrationTest extends JerseyTest {
     }
 
     public static class PersonDAO extends AbstractDAO<Person> {
-        public PersonDAO(SessionFactory sessionFactory) {
-            super(sessionFactory);
-        }
-
         public Optional<Person> findByName(String name) {
             return Optional.ofNullable(get(name));
         }
@@ -87,7 +79,13 @@ public class JerseyIntegrationTest extends JerseyTest {
     private SessionFactory sessionFactory;
 
     @Override
-    @After
+    @BeforeEach
+    public void setUp() throws Exception {
+        super.setUp();
+    }
+
+    @Override
+    @AfterEach
     public void tearDown() throws Exception {
         super.tearDown();
 
@@ -98,8 +96,6 @@ public class JerseyIntegrationTest extends JerseyTest {
 
     @Override
     protected Application configure() {
-        forceSet(TestProperties.CONTAINER_PORT, "0");
-
         final MetricRegistry metricRegistry = new MetricRegistry();
         final SessionFactoryFactory factory = new SessionFactoryFactory();
         final DataSourceFactory dbConfig = new DataSourceFactory();
@@ -133,9 +129,10 @@ public class JerseyIntegrationTest extends JerseyTest {
             transaction.commit();
         }
 
-        final DropwizardResourceConfig config = DropwizardResourceConfig.forTesting(new MetricRegistry());
+        final DropwizardResourceConfig config = DropwizardResourceConfig.forTesting();
         config.register(new UnitOfWorkApplicationListener("hr-db", sessionFactory));
-        config.register(new PersonResource(new PersonDAO(sessionFactory)));
+        config.register(new PersonResource(new PersonDAO()));
+        config.register(new JacksonMessageBodyProvider(Jackson.newObjectMapper()));
         config.register(new PersistenceExceptionMapper());
         config.register(new JacksonFeature(Jackson.newObjectMapper()));
         config.register(new DataExceptionMapper());

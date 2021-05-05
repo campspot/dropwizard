@@ -1,13 +1,12 @@
 package io.dropwizard.jersey.jackson;
 
-import com.codahale.metrics.MetricRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dropwizard.jersey.AbstractJerseyTest;
 import io.dropwizard.jersey.DropwizardResourceConfig;
 import io.dropwizard.jersey.errors.LoggingExceptionMapper;
 import org.glassfish.jersey.client.ClientConfig;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
@@ -23,7 +22,7 @@ public class JsonProcessingExceptionMapperTest extends AbstractJerseyTest {
 
     @Override
     protected Application configure() {
-        return DropwizardResourceConfig.forTesting(new MetricRegistry())
+        return DropwizardResourceConfig.forTesting()
                 .packages("io.dropwizard.jersey.jackson")
                 .register(new LoggingExceptionMapper<Throwable>() { });
     }
@@ -109,11 +108,6 @@ public class JsonProcessingExceptionMapperTest extends AbstractJerseyTest {
     @Test
     public void returnsA400ForMalformedListInputCausingIoException() throws Exception {
         assertEndpointReturns400("urlList", "[\"no-scheme.com\"]");
-    }
-
-    @Test
-    public void returnsA400ForNonDeserializableRequestEntities() throws Exception {
-        assertEndpointReturns400("ok", new UnknownRepresentation(100));
     }
 
     @Test
