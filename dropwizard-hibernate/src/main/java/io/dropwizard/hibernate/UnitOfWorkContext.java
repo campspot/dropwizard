@@ -6,8 +6,8 @@ import org.hibernate.SessionFactory;
 import javax.annotation.Nullable;
 
 public class UnitOfWorkContext {
-    private static final ThreadLocal<UnitOfWork> UNIT_OF_WORK = new ThreadLocal<>();
-    private static final ThreadLocal<SessionFactory> SESSION_FACTORY = new ThreadLocal<>();
+    public static final ThreadLocal<UnitOfWork> UNIT_OF_WORK = new ThreadLocal<>();
+    public static final ThreadLocal<SessionFactory> SESSION_FACTORY = new ThreadLocal<>();
 
     public static void setUnitOfWork(UnitOfWork unitOfWork) {
         UNIT_OF_WORK.set(unitOfWork);
